@@ -1,0 +1,50 @@
+// Copyright 2026 NexTech Solutions LLC
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+message Value {
+    oneof kind {
+        int32 int_32 = 1;
+        RepeatedInt32 int_32_arr = 2;
+        int64 int_64 = 3;
+        RepeatedInt64 int_64_arr = 4;
+        float float = 5;
+        RepeatedFloat float_arr = 6;
+        double double = 7;
+        RepeatedDouble double_arr = 8;
+        string string = 9;
+        bool bool = 10;
+    }
+}
+
+message RepeatedInt32 {
+    repeated int32 numbers = 1 [packed = true];
+}
+
+message RepeatedInt64 {
+    repeated int64 numbers = 1 [packed = true];
+}
+
+message RepeatedFloat {
+    repeated float numbers = 1 [packed = true];
+}
+
+message RepeatedDouble {
+    repeated double numbers = 1 [packed = true];
+}
+
+message ElementMessage {
+    string type = 1;
+
+    bytes id = 2;
+    string objectId = 3;
+    bytes source = 8;
+    string display_name = 4;
+    repeated double positions = 5 [packed = true];
+    uint64 stale = 6;
+    uint64 start = 9;
+    uint64 time = 10;
+
+    map<string, Value> values = 7;
+}

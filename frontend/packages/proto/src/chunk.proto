@@ -1,0 +1,36 @@
+// Copyright 2026 NexTech Solutions LLC
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+// Historical chunk payload — frontend copy of the Java-side proto at
+// sdk/src/main/resources/opencop/core/proto/history/chunk.proto.
+// Compiled together with elements.proto by pbjs so the ElementMessage
+// reference resolves without an import statement.
+
+enum HistoricalChunkResolution {
+    HISTORICAL_CHUNK_RESOLUTION_UNKNOWN = 0;
+    HISTORICAL_CHUNK_RESOLUTION_MINUTE_1 = 1;
+    HISTORICAL_CHUNK_RESOLUTION_HOUR_1 = 2;
+    HISTORICAL_CHUNK_RESOLUTION_DAY_1 = 3;
+}
+
+enum HistoricalChunkProfile {
+    HISTORICAL_CHUNK_PROFILE_UNKNOWN = 0;
+    HISTORICAL_CHUNK_PROFILE_DETAIL = 1;
+}
+
+message HistoricalChunkPayload {
+    string chunk_key = 1;
+    uint32 chunk_index = 2;
+    uint64 from_epoch_millis = 3;
+    uint64 to_epoch_millis = 4;
+    HistoricalChunkResolution resolution = 5;
+    HistoricalChunkProfile profile = 6;
+    uint32 point_count = 7;
+    uint32 object_count = 8;
+    repeated ElementMessage elements = 9;
+    uint32 part_index = 10;
+    uint32 part_count = 11;
+    bool final_for_chunk = 12;
+}

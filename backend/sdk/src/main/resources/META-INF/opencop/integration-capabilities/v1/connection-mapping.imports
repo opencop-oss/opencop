@@ -1,0 +1,5 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+# Provider-owned metadata for TAK's versioned connection mapping declaration.
+com.opencop.core.sdk.integration.builtin.technical.config.NativeConnectionMappingConfiguration

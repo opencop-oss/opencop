@@ -1,0 +1,243 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  port: 8080
+
+spring:
+  config:
+    import: "optional:configtree:/run/secrets/"
+  application:
+    name: opencop-processor
+  datasource:
+    url: ${opencop.db.url}
+    username: ${opencop.db.username}
+    password: ${opencop.db.password}
+    driver: ${opencop.db.driver}
+  data:
+    redis:
+      host: ${redis.host}
+      port: ${redis.port}
+      password: ${redis.password:}
+      ssl:
+        enabled: ${redis.ssl:false}
+      timeout: 5s
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.apache.kafka.clients.consumer.internals.ClassicKafkaConsumer: WARN
+    org.springframework.kafka: WARN
+    org.springframework.kafka.listener: WARN
+    org.apache.kafka.clients.consumer: WARN
+    org.apache.kafka.clients.NetworkClient: WARN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+opencop:
+  processor:
+    startup-leader:
+      enabled: ${PROCESSOR_STARTUP_LEADER_ENABLED:false}
+      lock-key: ${PROCESSOR_STARTUP_LEADER_LOCK_KEY:opencop:processor:startup-leader}
+  pipeline:
+    publish:
+      # Per-object partition keys on the mapped and validated hops preserve a conforming BYOD
+      # producer's publication order end to end. Kill switch: off reverts both hops to key-less
+      # spread publishing (the pre-keying placement); watchbox detection then relies solely on
+      # its order-tolerant fold (watch the stale_dropped_transition fold outcome while off).
+      keyed: ${PIPELINE_KEYED_PUBLISH:true}
+  watchbox:
+    pipeline:
+      cache-ttl: 5s
+      future-tolerance: 5m
+    state:
+      live-window: ${WATCHBOX_STATE_LIVE_WINDOW:10m}
+      retention: ${WATCHBOX_STATE_RETENTION:1h}
+      gc:
+        enabled: ${WATCHBOX_STATE_GC_ENABLED:true}
+        interval: ${WATCHBOX_STATE_GC_INTERVAL:1h}
+        initial-delay: ${WATCHBOX_STATE_GC_INITIAL_DELAY:5m}
+        batch-size: ${WATCHBOX_STATE_GC_BATCH_SIZE:5000}
+        max-batches-per-tick: ${WATCHBOX_STATE_GC_MAX_BATCHES_PER_TICK:20}
+      breaker:
+        enabled: ${WATCHBOX_STATE_BREAKER_ENABLED:true}
+        # Counted per instance (admission stays off the hot path): the aggregate pre-trip bound
+        # is ~instances x cap per scope, and a restart resets counting progress. A trip itself is
+        # durable and global via the DEGRADED status row.
+        cap: ${WATCHBOX_STATE_BREAKER_CAP:10000}
+    detection:
+      retention: ${WATCHBOX_DETECTION_RETENTION:72h}
+      gc:
+        enabled: ${WATCHBOX_DETECTION_GC_ENABLED:true}
+        interval: ${WATCHBOX_DETECTION_GC_INTERVAL:1h}
+        initial-delay: ${WATCHBOX_DETECTION_GC_INITIAL_DELAY:10m}
+        batch-size: ${WATCHBOX_DETECTION_GC_BATCH_SIZE:5000}
+        max-batches-per-tick: ${WATCHBOX_DETECTION_GC_MAX_BATCHES_PER_TICK:20}
+    alerts:
+      drain:
+        batch-size: ${WATCHBOX_ALERTS_DRAIN_BATCH_SIZE:128}
+        # Fallback poll is the crash-recovery bound, not the delivery latency path (the
+        # in-process nudge is); it also paces retries while Redis is down.
+        poll-interval: ${WATCHBOX_ALERTS_DRAIN_POLL_INTERVAL:5s}
+    source-status:
+      gc:
+        enabled: ${WATCHBOX_SOURCE_STATUS_GC_ENABLED:true}
+        interval: ${WATCHBOX_SOURCE_STATUS_GC_INTERVAL:1h}
+        initial-delay: ${WATCHBOX_SOURCE_STATUS_GC_INITIAL_DELAY:15m}
+        batch-size: ${WATCHBOX_SOURCE_STATUS_GC_BATCH_SIZE:5000}
+        max-batches-per-tick: ${WATCHBOX_SOURCE_STATUS_GC_MAX_BATCHES_PER_TICK:20}
+        # Age guard on epoch-stranded status rows only (current-epoch rows are never deleted):
+        # the forensic window for superseded generations, matching detection retention.
+        retention: ${WATCHBOX_SOURCE_STATUS_GC_RETENTION:72h}
+  realtime-mapping-outcomes:
+    enabled: ${REALTIME_MAPPING_OUTCOMES_ENABLED:true}
+    max-problem-resource-tags: ${REALTIME_MAPPING_OUTCOME_MAX_RESOURCE_TAGS:100}
+    warning-summary-interval: ${REALTIME_MAPPING_OUTCOME_WARNING_SUMMARY_INTERVAL:5m}
+    warning-state-max: ${REALTIME_MAPPING_OUTCOME_WARNING_STATE_MAX:1000}
+    warning-global-max-per-interval: ${REALTIME_MAPPING_OUTCOME_WARNING_GLOBAL_MAX:100}
+  cloud:
+    provider: "azure"
+  byod:
+    sources-topic: opencop.byod.sources
+    runtime:
+      flush-interval: ${BYOD_RUNTIME_FLUSH_INTERVAL:5s}
+      status-ttl: ${BYOD_RUNTIME_STATUS_TTL:5m}
+    consumer:
+      max-poll-records: ${BYOD_MAX_POLL_RECORDS:100}
+      retry-attempts: 2
+      retry-backoff-ms: 1_000
+      auto-offset-reset: earliest
+      max-containers: 500
+      session-timeout-ms: ${BYOD_SESSION_TIMEOUT_MS:45000}
+      heartbeat-interval-ms: ${BYOD_HEARTBEAT_INTERVAL_MS:3000}
+      max-poll-interval-ms: ${BYOD_MAX_POLL_INTERVAL_MS:300000}
+      fetch-min-bytes: ${BYOD_FETCH_MIN_BYTES:1}
+      fetch-max-bytes: ${BYOD_FETCH_MAX_BYTES:52428800}
+  bff:
+    ws:
+      ticket-ttl-seconds: 60
+  messaging-broker:
+    provider: ${MESSAGING_BROKER_PROVIDER}
+    producer-ack-timeout: ${KAFKA_PRODUCER_ACK_TIMEOUT:10s}
+    dlt-indexing:
+      enabled: ${DLT_INDEXING_ENABLED:false}
+      enabled-listeners: ${DLT_INDEXING_ENABLED_LISTENERS:raw,persist}
+      group-id-suffix: -dlt-indexer
+      concurrency: ${DLT_INDEXING_CONCURRENCY:1}
+      max-poll-records: ${DLT_INDEXING_MAX_POLL_RECORDS:5000}
+      auto-offset-reset: ${DLT_INDEXING_AUTO_OFFSET_RESET:latest}
+      retry-attempts: ${DLT_INDEXING_RETRY_ATTEMPTS:5}
+      retry-initial-interval-ms: ${DLT_INDEXING_RETRY_INITIAL_INTERVAL_MS:1000}
+      retry-multiplier: ${DLT_INDEXING_RETRY_MULTIPLIER:2.0}
+      retry-max-interval-ms: ${DLT_INDEXING_RETRY_MAX_INTERVAL_MS:60000}
+      payload-retention: ${DLT_PAYLOAD_RETENTION:7d}
+    listeners:
+      raw:
+        topic: opencop.event.external.raw
+        groupId: opencop-raw
+        concurrency: 10
+        maxRetries: 2
+        maxPollRecords: 2000
+        maxWaitMs: 500
+        minSizeBytes: 4_096_000 # 4mb
+        maxSizeBytes: 8_192_000 # 8mb
+        valueType: raw
+        stage: RAW
+      validation:
+        topic: opencop.geo.mapped
+        groupId: opencop-validation
+        concurrency: 10
+        maxRetries: 2
+        maxPollRecords: 2000
+        maxWaitMs: 500
+        minSizeBytes: 4_096_000 # 4mb
+        maxSizeBytes: 8_192_000 # 8mb
+        valueType: feature
+        stage: VALIDATION
+      realTime:
+        topic: opencop.geo.validated
+        groupId: opencop-real-time
+        concurrency: 4
+        maxPollRecords: 5000
+        maxWaitMs: 500
+        minSizeBytes: 4_096_000 # 4mb
+        maxSizeBytes: 8_192_000 # 8mb
+        valueType: feature
+        stage: REAL_TIME
+      persist:
+        topic: opencop.geo.validated
+        groupId: opencop-persist
+        concurrency: 4
+        maxPollRecords: 1000
+        valueType: feature
+        stage: PERSIST
+      watchbox:
+        topic: opencop.geo.validated
+        groupId: opencop-watchbox
+        concurrency: 2
+        maxPollRecords: 1000
+        valueType: feature
+        stage: WATCHBOX
+        autoOffsetReset: latest
+        # Idle events keep the detection liveness heartbeat honest when no traffic flows.
+        idleEventInterval: 10s
+        # A dead-lettered detection is unrecoverable (the monotonic fold and live-window guard
+        # drop replays), so infrastructure outages retry in place until the database returns
+        # instead of tombstoning up to maxPollRecords events after ~3.5s.
+        # If in-place retry ever needs a ceiling, tie it to the live window: events older than
+        # the window are dropped at admission anyway, so retrying past it preserves nothing.
+        retryInPlaceFailures: true
+      notification:
+        topic: opencop.notification
+        groupId: opencop-notification
+        concurrency: 1
+        batch: false
+        maxRetries: 5
+        valueType: notification
+        stage: NOTIFICATION
+      jobs:
+        topic: opencop.jobs
+        groupId: opencop-jobs
+        concurrency: 1
+        batch: false
+        maxRetries: 5
+        valueType: raw
+        stage: JOBS
+      history:
+        topic: opencop.history.jobs
+        groupId: opencop-history-jobs
+        concurrency: 1
+        batch: false
+        maxRetries: 5
+        valueType: raw
+        stage: HISTORY
+  blob:
+    container-name: ${cloud.blob.container-name}
+    account-name: ${cloud.blob.account-name}
+    account-key: ${cloud.blob.account-key}
+    endpoint: ${cloud.blob.endpoint}
+    media:
+      container-name: ${MEDIA_BLOB_CONTAINER:opencop-common}
+      sas-expiry-minutes: 10
+  redis:
+    host: ${redis.host}
+    port: ${redis.port}
+  history:
+    execution:
+      max-concurrent-subjects-per-job: ${HISTORY_MAX_CONCURRENT_SUBJECTS_PER_JOB:2}
+      payload-ttl: ${HISTORY_PAYLOAD_TTL:30m}
+      job-state-ttl: ${HISTORY_JOB_STATE_TTL:24h}
+      admission-ttl: ${HISTORY_ADMISSION_TTL:45m}
+      max-runtime: ${HISTORY_JOB_MAX_RUNTIME:30m}
+      active-snapshot-query-timeout: ${HISTORY_ACTIVE_SNAPSHOT_QUERY_TIMEOUT:5m}
+      ttl-refresh-interval: ${HISTORY_JOB_TTL_REFRESH_INTERVAL:5m}
+      worker-pool-size: ${HISTORY_JOB_WORKER_POOL_SIZE:8}
+      queue-capacity: ${HISTORY_JOB_QUEUE_CAPACITY:100}
+      max-payload-part-bytes: ${HISTORY_PAYLOAD_PART_MAX_BYTES:1048576}
+      max-chunk-payload-bytes: ${HISTORY_CHUNK_PAYLOAD_MAX_BYTES:2097152}
+      max-consecutive-chunk-failures: ${HISTORY_MAX_CONSECUTIVE_CHUNK_FAILURES:5}
+      max-failure-ratio: ${HISTORY_MAX_FAILURE_RATIO:0.10}

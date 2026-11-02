@@ -1,0 +1,56 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  port: 8086
+  # port: 8081
+
+logging.level:
+  com.opencop: DEBUG  # Helps see messages in logs, good for local debugging but would be excessive and insecure for prod
+  org.springframework.security: DEBUG
+  org.springframework.security.web.access.intercept.AuthorizationFilter: TRACE
+  org.springframework.security.authorization.method: TRACE
+ui:
+  enabled: true
+
+opencop:
+  connect:
+    socket:
+      read-timeout-seconds: 10
+      tcp-keepalive: true
+      max-message-size-bytes: 1_048_576
+  cloud:
+    provider: "azure"
+  blob:
+    container-name: "opencop-common"
+    account-name: devstoreaccount1
+    account-key: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+    endpoint: http://localhost:10000/devstoreaccount1
+  db:
+    url: jdbc:postgresql://localhost:5432/opencop-db
+    username: admin
+    password: mypassword
+    driver:  org.postgresql.Driver
+  secrets:
+    vault:
+      provider: kv
+      addr: http://127.0.0.1:8203 # Connect agent is 8203
+      mount: kv
+      token-file: ""   # not used locally
+  messaging-broker:
+    provider: local
+    properties:
+      # bootstrap = AdminClient (topic/ACL ops), sasl-bootstrap = external BYOD producer endpoint.
+      # These are intentionally separate — same broker, different listeners/ports.
+      bootstrap-url: ${KAFKA_BOOTSTRAP_URL:localhost:9092}
+      sasl-bootstrap-url: ${BYOD_SASL_BOOTSTRAP:${BYOD_EXTERNAL_HOST:localhost}:9094}
+      default-producer-byte-rate: 1_048_576
+      topic-partitions: 10
+
+kafka:
+  bootstrap:
+    url: localhost:9092
+
+redis:
+  host: localhost
+  port: 6379

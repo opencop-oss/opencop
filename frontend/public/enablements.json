@@ -1,0 +1,3 @@
+{
+    "plugins": [{ "id": "opencop.symbology" }, { "id": "opencop.textbox" }]
+}

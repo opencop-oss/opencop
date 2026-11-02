@@ -1,0 +1,1 @@
+ALTER TYPE profiles.transport_kind ADD VALUE 'RTSP';

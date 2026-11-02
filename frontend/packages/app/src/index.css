@@ -1,0 +1,139 @@
+/* Copyright 2026 NexTech Solutions LLC */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+:root {
+    font-family: "Inter Variable", sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    interpolate-size: "allow-keywords";
+
+    color-scheme: dark;
+    color: #94a3b8; /* slate.text.muted - matches fg.muted */
+    background-color: #1f2530; /* slate.bg - matches bg token */
+
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    --tool: url("/crosshair.svg") 16 16, auto;
+}
+
+a {
+    font-weight: 500;
+    color: #646cff;
+    text-decoration: inherit;
+}
+
+a:hover {
+    color: #535bf2;
+}
+
+html,
+body {
+    overscroll-behavior: none;
+}
+
+body {
+    margin: 0;
+    display: flex;
+    place-items: center;
+    min-width: 320px;
+    min-height: 100vh;
+}
+
+h1 {
+    font-size: 3.2em;
+    line-height: 1.1;
+}
+
+.popup {
+    opacity: 0;
+}
+
+.max {
+    width: 100%;
+    height: 100%;
+}
+
+.flex-column {
+    display: flex;
+    direction: column;
+}
+
+.flex-row {
+    display: flex;
+    direction: row;
+}
+
+.justify-space-between {
+    justify-content: space-between;
+}
+
+.align-center {
+    align-items: center;
+}
+
+.center {
+    justify-content: center;
+    align-items: center;
+}
+
+.maplibregl-canvas:focus:not(:focus-visible) {
+    outline: none;
+}
+
+.maplibregl-boxzoom {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: rgba(255, 255, 255, 0.25);
+    border: 2px dashed rgba(0, 0, 0, 0.5);
+}
+
+@keyframes flash-border {
+    0%,
+    33%,
+    67% {
+        border-color: transparent;
+    }
+    17%,
+    50%,
+    83% {
+        border-color: var(--flash-color);
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    @keyframes slideInFromLeft {
+        from {
+            transform: translateX(-100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideInFromRight {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+}
+
+@keyframes expandDown {
+    from {
+        opacity: 0;
+        max-height: 0px;
+    }
+    to {
+        opacity: 1;
+        max-height: 350px;
+    }
+}

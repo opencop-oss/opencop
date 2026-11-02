@@ -1,0 +1,430 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 NexTech Solutions LLC -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.9</version>
+        <relativePath/>
+    </parent>
+
+    <packaging>pom</packaging>
+
+    <groupId>com.opencop.core</groupId>
+    <artifactId>opencop-parent</artifactId>
+    <version>0.2.0-SNAPSHOT</version>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <properties>
+        <!--   Internal Dependencies   -->
+        <sdk.version>0.2.0-SNAPSHOT</sdk.version>
+
+        <!--   External Dependencies   -->
+        <slf4j-api.version>2.0.17</slf4j-api.version>
+        <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
+
+        <azure-storage-blob.version>12.35.0</azure-storage-blob.version>
+        <azure-resourcemanager-eventhubs.version>2.53.8</azure-resourcemanager-eventhubs.version>
+        <azure-identity.version>1.18.4</azure-identity.version>
+        <azure-core-http-jdk-httpclient.version>1.1.5</azure-core-http-jdk-httpclient.version>
+
+        <h2.version>2.3.232</h2.version>
+        <bcprov-jdk15to18.version>1.85</bcprov-jdk15to18.version>
+        <postgresql.version>42.7.12</postgresql.version>
+        <caffeine.version>3.2.3</caffeine.version>
+
+        <geojson-jackson.version>3.0</geojson-jackson.version>
+        <mgrs.version>2.1.3</mgrs.version>
+        <Saxon-HE.version>12.9</Saxon-HE.version>
+        <imageio-webp.version>3.13.1</imageio-webp.version>
+        <protobuf-java.version>4.33.0</protobuf-java.version>
+        <checker-qual.version>3.49.3</checker-qual.version>
+        <opentelemetry.version>1.67.0</opentelemetry.version>
+        <jmisb.version>1.12.0</jmisb.version>
+        <javacv.version>1.5.14</javacv.version>
+        <bytedeco.ffmpeg.version>8.1.2-1.5.14</bytedeco.ffmpeg.version>
+        <bytedeco.classifier>unsupported</bytedeco.classifier>
+
+        <!-- Security overrides above or outside the Spring Boot 4.0.9 managed baseline, to clear the
+             SBOM (Grype) dependency scan. -->
+        <httpcore5.version>5.4.3</httpcore5.version>
+        <httpclient5.version>5.6.3</httpclient5.version>
+        <lz4-java.version>1.11.4</lz4-java.version>
+        <snappy-java.version>1.1.10.12</snappy-java.version>
+
+        <!--   Test Dependencies   -->
+        <mockito.version>5.18.0</mockito.version>
+        <mockito.javaagent.path>${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</mockito.javaagent.path>
+        <!-- JDK 25 blocks reliable Mockito self-attachment; Mockito modules opt in to this test JVM agent. -->
+        <mockito.javaagent.argLine>-javaagent:${mockito.javaagent.path}</mockito.javaagent.argLine>
+        <embedded-postgres.version>2.2.0</embedded-postgres.version>
+        <!-- 1.21.4+ required for Docker Engine 29 (daemon minimum API 1.40 rejects older clients). -->
+        <testcontainers.version>1.21.4</testcontainers.version>
+        <!-- Exclude stress tests by default. Override with: -Dtest.excluded.groups= -->
+        <test.excluded.groups>stress</test.excluded.groups>
+        <!-- Keep reruns off by default; CI enables this to surface flaky tests in JUnit reports. -->
+        <test.rerun.failing.count>0</test.rerun.failing.count>
+        <skip.unit.tests>false</skip.unit.tests>
+        <skip.component.tests>false</skip.component.tests>
+
+        <!--   Plugin Dependencies   -->
+        <cyclonedx-maven-plugin.version>2.9.1</cyclonedx-maven-plugin.version>
+        <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+        <maven-enforcer-plugin.version>3.6.2</maven-enforcer-plugin.version>
+        <maven-jar-plugin.version>3.5.0</maven-jar-plugin.version>
+        <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
+        <spring.boot.test.debug>false</spring.boot.test.debug>
+        <impsort-maven-plugin.version>1.13.0</impsort-maven-plugin.version>
+        <maven-toolchains-plugin.version>3.2.0</maven-toolchains-plugin.version>
+        <spotless-maven-plugin.version>2.45.0</spotless-maven-plugin.version>
+        <protobuf-maven-plugin.version>4.0.2</protobuf-maven-plugin.version>
+        <protobuf-maven-plugin.protoc>4.33.0</protobuf-maven-plugin.protoc>
+
+        <java.version>25</java.version>
+        <jdk.version>25</jdk.version>
+        <maven.compiler.source>${jdk.version}</maven.compiler.source>
+        <maven.compiler.target>${jdk.version}</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-bom</artifactId>
+                <version>${mockito.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- lz4-java is not managed by the Spring Boot 4.0.9 BOM; it arrives transitively
+                 via kafka-clients as the relocated fork at.yawk.lz4:lz4-java. Pin the exact
+                 coordinate so the CVE-fixed version wins over the transitive one. 1.11.4 fixes
+                 GHSA-mcr4-qmvw-px4g and the other lz4-java advisories published through
+                 October 2026. -->
+            <dependency>
+                <groupId>at.yawk.lz4</groupId>
+                <artifactId>lz4-java</artifactId>
+                <version>${lz4-java.version}</version>
+            </dependency>
+
+            <!-- Kafka supplies Snappy transitively; manage the coordinate explicitly so the
+                 stream allocation and range-check fixes override its bundled dependency version. -->
+            <dependency>
+                <groupId>org.xerial.snappy</groupId>
+                <artifactId>snappy-java</artifactId>
+                <version>${snappy-java.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.azure.resourcemanager</groupId>
+                <artifactId>azure-resourcemanager-eventhubs</artifactId>
+                <version>${azure-resourcemanager-eventhubs.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.azure</groupId>
+                        <artifactId>azure-core-http-netty</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>com.azure</groupId>
+                <artifactId>azure-identity</artifactId>
+                <version>${azure-identity.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.jmisb</groupId>
+                <artifactId>jmisb-api</artifactId>
+                <version>${jmisb.version}</version>
+            </dependency>
+
+            <!-- Keep JMISB's FFmpeg transitive dependencies aligned with the versions used by Connect. -->
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>javacv</artifactId>
+                <version>${javacv.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>javacpp</artifactId>
+                <version>${javacv.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>javacpp-platform</artifactId>
+                <version>${javacv.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>ffmpeg</artifactId>
+                <version>${bytedeco.ffmpeg.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>ffmpeg-platform</artifactId>
+                <version>${bytedeco.ffmpeg.version}</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>${maven-enforcer-plugin.version}</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${maven-jar-plugin.version}</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>io.github.ascopes</groupId>
+                    <artifactId>protobuf-maven-plugin</artifactId>
+                    <version>${protobuf-maven-plugin.version}</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                    <configuration>
+                        <skipTests>${skip.unit.tests}</skipTests>
+                        <excludedGroups>${test.excluded.groups}</excludedGroups>
+                        <rerunFailingTestsCount>${test.rerun.failing.count}</rerunFailingTestsCount>
+                        <includes>
+                            <include>**/*Test.java</include>
+                        </includes>
+                        <excludes>
+                            <exclude>**/*IT.java</exclude>
+                        </excludes>
+                        <systemPropertyVariables>
+                            <!-- Prevent CI or local shell env from enabling Spring Boot's auto-configuration
+                                 condition report, which can exhaust the GitLab job log buffer. -->
+                            <debug>${spring.boot.test.debug}</debug>
+                            <spring.main.banner-mode>${spring.boot.test.banner-mode}</spring.main.banner-mode>
+                            <logging.level.root>${spring.boot.test.root-log-level}</logging.level.root>
+                            <logging.level.com.opencop>${spring.boot.test.opencop-log-level}</logging.level.com.opencop>
+                            <logging.level.org.springframework>${spring.boot.test.spring-log-level}</logging.level.org.springframework>
+                            <logging.level.org.apache.kafka>${spring.boot.test.kafka-log-level}</logging.level.org.apache.kafka>
+                            <logging.level.org.springframework.kafka>${spring.boot.test.kafka-log-level}</logging.level.org.springframework.kafka>
+                            <logging.level.org.testcontainers>${spring.boot.test.testcontainers-log-level}</logging.level.org.testcontainers>
+                            <logging.level.com.github.dockerjava>${spring.boot.test.testcontainers-log-level}</logging.level.com.github.dockerjava>
+                            <logging.level.io.zonky.test.db.postgres.embedded>${spring.boot.test.embedded-postgres-log-level}</logging.level.io.zonky.test.db.postgres.embedded>
+                            <logging.level.org.flywaydb>${spring.boot.test.flyway-log-level}</logging.level.org.flywaydb>
+                            <logging.level.org.hibernate>${spring.boot.test.hibernate-log-level}</logging.level.org.hibernate>
+                            <logging.level.com.zaxxer.hikari>${spring.boot.test.hikari-log-level}</logging.level.com.zaxxer.hikari>
+                        </systemPropertyVariables>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                    <configuration>
+                        <skipITs>${skip.component.tests}</skipITs>
+                        <includes>
+                            <include>**/*IT.java</include>
+                        </includes>
+                        <rerunFailingTestsCount>${test.rerun.failing.count}</rerunFailingTestsCount>
+                        <!-- Keep component-test application logs in Failsafe reports instead of flooding the install console. -->
+                        <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                        <systemPropertyVariables>
+                            <debug>${spring.boot.test.debug}</debug>
+                            <spring.main.banner-mode>${spring.boot.test.banner-mode}</spring.main.banner-mode>
+                            <logging.level.root>${spring.boot.test.root-log-level}</logging.level.root>
+                            <logging.level.com.opencop>${spring.boot.test.opencop-log-level}</logging.level.com.opencop>
+                            <logging.level.org.springframework>${spring.boot.test.spring-log-level}</logging.level.org.springframework>
+                            <logging.level.org.apache.kafka>${spring.boot.test.kafka-log-level}</logging.level.org.apache.kafka>
+                            <logging.level.org.springframework.kafka>${spring.boot.test.kafka-log-level}</logging.level.org.springframework.kafka>
+                            <logging.level.org.testcontainers>${spring.boot.test.testcontainers-log-level}</logging.level.org.testcontainers>
+                            <logging.level.com.github.dockerjava>${spring.boot.test.testcontainers-log-level}</logging.level.com.github.dockerjava>
+                            <logging.level.io.zonky.test.db.postgres.embedded>${spring.boot.test.embedded-postgres-log-level}</logging.level.io.zonky.test.db.postgres.embedded>
+                            <logging.level.org.flywaydb>${spring.boot.test.flyway-log-level}</logging.level.org.flywaydb>
+                            <logging.level.org.hibernate>${spring.boot.test.hibernate-log-level}</logging.level.org.hibernate>
+                            <logging.level.com.zaxxer.hikari>${spring.boot.test.hikari-log-level}</logging.level.com.zaxxer.hikari>
+                        </systemPropertyVariables>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>component-tests</id>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>repackage</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-toolchains-plugin</artifactId>
+                    <version>${maven-toolchains-plugin.version}</version>
+                </plugin>
+
+                <!--   Version 1.12.0 does not work with java 25, wait for new release    -->
+                <plugin>
+                    <groupId>net.revelc.code</groupId>
+                    <artifactId>impsort-maven-plugin</artifactId>
+                    <version>${impsort-maven-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <phase>process-sources</phase>
+                            <goals>
+                                <goal>sort</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <removeUnused>true</removeUnused>
+                        <compliance>${jdk.version}</compliance>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven-compiler-plugin.version}</version>
+                    <configuration>
+                        <release>${jdk.version}</release>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>com.diffplug.spotless</groupId>
+                    <artifactId>spotless-maven-plugin</artifactId>
+                    <version>${spotless-maven-plugin.version}</version>
+                    <configuration>
+                        <java>
+                            <googleJavaFormat>
+                                <version>1.33.0</version>
+                            </googleJavaFormat>
+
+                            <removeUnusedImports />
+                            <trimTrailingWhitespace />
+                            <endWithNewline />
+                        </java>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>format</id>
+                            <phase>validate</phase>
+                            <goals>
+                                <goal>apply</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.cyclonedx</groupId>
+                    <artifactId>cyclonedx-maven-plugin</artifactId>
+                    <version>${cyclonedx-maven-plugin.version}</version>
+                </plugin>
+
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>bytedeco-linux-x86_64</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                    <arch>amd64</arch>
+                </os>
+            </activation>
+            <properties>
+                <bytedeco.classifier>linux-x86_64</bytedeco.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>bytedeco-linux-x86_64-alt-arch</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                    <arch>x86_64</arch>
+                </os>
+            </activation>
+            <properties>
+                <bytedeco.classifier>linux-x86_64</bytedeco.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>bytedeco-linux-arm64</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <bytedeco.classifier>linux-arm64</bytedeco.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>bytedeco-macos-arm64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>aarch64</arch>
+                </os>
+            </activation>
+            <properties>
+                <bytedeco.classifier>macosx-arm64</bytedeco.classifier>
+            </properties>
+        </profile>
+        <profile>
+            <id>bytedeco-macos-x86_64</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                    <arch>x86_64</arch>
+                </os>
+            </activation>
+            <properties>
+                <bytedeco.classifier>macosx-x86_64</bytedeco.classifier>
+            </properties>
+        </profile>
+    </profiles>
+
+</project>

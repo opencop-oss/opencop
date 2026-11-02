@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 NexTech Solutions LLC -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+<!--
+  Shared Maven repository settings for the Docker base image and the CI Maven jobs.
+  Requires MAVEN_CENTRAL_FALLBACK_URL in the environment. Maven Central stays the first repository;
+  the fallback declared after it serves any artifact Central refuses, such as when it rate-limits
+  the runners with HTTP 429. Repository order is resolution order, so artifacts come from the
+  fallback only when Central fails. Maven still asks every repository for some metadata, so the
+  fallback gets a few small requests on a healthy build.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+  <profiles>
+    <profile>
+      <id>maven-central-fallback</id>
+      <repositories>
+        <repository>
+          <id>central</id>
+          <url>https://repo.maven.apache.org/maven2</url>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+        </repository>
+        <repository>
+          <id>maven-central-fallback</id>
+          <url>${env.MAVEN_CENTRAL_FALLBACK_URL}</url>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>central</id>
+          <url>https://repo.maven.apache.org/maven2</url>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+        </pluginRepository>
+        <pluginRepository>
+          <id>maven-central-fallback</id>
+          <url>${env.MAVEN_CENTRAL_FALLBACK_URL}</url>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>maven-central-fallback</activeProfile>
+  </activeProfiles>
+</settings>

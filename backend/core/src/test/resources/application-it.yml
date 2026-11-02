@@ -1,0 +1,98 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+spring:
+  main:
+    banner-mode: off
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    placeholders:
+      postgisExtensionSql: "SELECT 1;"
+      geoFeaturesGeomType: "text NOT NULL"
+      geoFeaturesGeomIndexSql: "CREATE INDEX geofeatures_geom_idx ON geo.features (geom);"
+      geoFeaturesHistoryChunkIndexSql: "CREATE INDEX geofeatures_history_chunk_idx ON geo.features (source, COALESCE(start_at, created_at), object_id, id);"
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  session:
+    store-type: none
+  security:
+    oauth2:
+      client:
+        provider:
+          oidc:
+            issuer-uri:
+            authorization-uri: http://localhost/oauth2/authorize
+            token-uri: http://localhost/oauth2/token
+            jwk-set-uri: http://localhost/oauth2/jwks
+            user-info-uri: http://localhost/oauth2/userinfo
+
+logging:
+  level:
+    org:
+      springframework: ERROR
+      springframework.kafka: ERROR
+      testcontainers: WARN
+      flywaydb: WARN
+      hibernate: WARN
+      apache:
+        kafka: WARN
+    root: WARN
+    com:
+      zaxxer:
+        hikari: WARN
+      github:
+        dockerjava: WARN
+    io:
+      zonky:
+        test:
+          db:
+            postgres:
+              embedded: WARN
+
+management:
+  health:
+    redis:
+      enabled: false
+
+# The generated OpenAPI document is contract-tested; springdoc only builds its
+# model on the first /v3/api-docs request, so idle suites pay nothing.
+springdoc:
+  api-docs:
+    enabled: true
+
+opencop:
+  cloud:
+    provider: local
+  domain: http://localhost:3000
+  idp:
+    issuer:
+  scim:
+    bearer-token: test-scim-token
+  messaging-broker:
+    provider: local
+  core:
+    auto-start-enabled-data-sources-on-startup:
+      enabled: false
+    assignment-reconciliation:
+      enabled: false
+
+idp:
+  issuer:
+  user-id-claim: sub
+  authorization-uri: http://localhost/oauth2/authorize
+  token-uri: http://localhost/oauth2/token
+  jwk-set-uri: http://localhost/oauth2/jwks
+  user-info-uri: http://localhost/oauth2/userinfo
+  admin:
+    client-id: test-client
+    client-secret: test-secret
+
+kafka:
+  bootstrap:
+    url: localhost:9092
+
+redis:
+  host: localhost
+  port: 6379

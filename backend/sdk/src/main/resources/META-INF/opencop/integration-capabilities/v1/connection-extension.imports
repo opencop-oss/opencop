@@ -1,0 +1,4 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+# Provider-owned metadata: each provider that adds operations to its connections lists its registration configuration here.

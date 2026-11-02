@@ -1,0 +1,101 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  port: 8080
+
+spring:
+  config:
+    import: "optional:configtree:/run/secrets/"
+  application:
+    name: opencop-connect
+  datasource:
+    url: ${opencop.db.url}
+    username: ${opencop.db.username}
+    password: ${opencop.db.password}
+    driver: ${opencop.db.driver}
+    hikari:
+      data-source-properties:
+        socketTimeout: 5  # seconds — PostgreSQL JDBC parameter; bounds query blocking under PG slowness
+  jpa:
+    open-in-view: false
+    defer-datasource-initialization: true
+  kafka:
+    bootstrap-servers: ${kafka.bootstrap.url}
+  data:
+    redis:
+      host: ${redis.host:localhost}
+      port: ${redis.port:6379}
+      password: ${redis.password:}
+      ssl:
+        enabled: ${redis.ssl:false}
+      timeout: 5s
+
+connection:
+  add-timeout-seconds: 10
+
+ui:
+  enabled: false
+
+opencop:
+  connect:
+    reconciliation:
+      enabled: true
+      interval: 10s
+      initial-delay: 0s
+      recovery-min-interval: ${OPENCOP_CONNECT_RECONCILIATION_RECOVERY_MIN_INTERVAL:180s}
+    periodic-data-source-restart:
+      enabled: ${OPENCOP_CONNECT_PERIODIC_DATA_SOURCE_RESTART_ENABLED:true}
+      interval: ${OPENCOP_CONNECT_PERIODIC_DATA_SOURCE_RESTART_INTERVAL:12h}
+      initial-delay: ${OPENCOP_CONNECT_PERIODIC_DATA_SOURCE_RESTART_INITIAL_DELAY:12h}
+    runtime:
+      status-ttl: ${OPENCOP_CONNECT_RUNTIME_STATUS_TTL:90s}
+    desired-state:
+      # Availability-first during desired-state Postgres outages: keep existing socket connections
+      # running, then apply any missed stop/delete/reassignment intent once reads recover.
+      stop-on-unavailable: ${OPENCOP_CONNECT_DESIRED_STATE_STOP_ON_POSTGRES_UNAVAILABLE:false}
+      unavailable-grace: ${OPENCOP_CONNECT_DESIRED_STATE_POSTGRES_UNAVAILABLE_GRACE:60s}
+    postgres-listener:
+      data-source:
+        maximum-pool-size: ${OPENCOP_CONNECT_PG_LISTENER_POOL_MAX:1}
+        minimum-idle: ${OPENCOP_CONNECT_PG_LISTENER_POOL_MIN_IDLE:1}
+        connection-timeout: ${OPENCOP_CONNECT_PG_LISTENER_CONNECTION_TIMEOUT:10s}
+        pool-name: ${OPENCOP_CONNECT_PG_LISTENER_POOL_NAME:opencop-connect-postgres-listener}
+      shutdown:
+        join-timeout: ${OPENCOP_CONNECT_PG_LISTENER_SHUTDOWN_JOIN_TIMEOUT:5s}
+    nudge:
+      # Ops kill-switch and test lever for the Postgres LISTEN/NOTIFY listener.
+      # When false, Connect ignores PG NOTIFY events and relies entirely on the periodic
+      # reconciler tick (see opencop.connect.reconciliation.interval) for restart epochs
+      # and desired-state changes — slower (recovery within reconciler interval rather than
+      # <1s) but independent of LISTEN/NOTIFY behaving correctly in this environment.
+      enabled: ${OPENCOP_CONNECT_NUDGE_ENABLED:true}
+    rtsp-klv:
+      # Connector-wide RTSP policy. These values are intentionally not stored in each
+      # source's connection_spec JSONB because they do not vary by data source.
+      connect-timeout: ${OPENCOP_CONNECT_RTSP_KLV_CONNECT_TIMEOUT:30s}
+      read-timeout: ${OPENCOP_CONNECT_RTSP_KLV_READ_TIMEOUT:60s}
+      prefer-tcp: ${OPENCOP_CONNECT_RTSP_KLV_PREFER_TCP:true}
+      # Service-level guardrail for streams that advertise KLV but do not produce a complete
+      # KLV unit after session open.
+      first-metadata-timeout: ${OPENCOP_CONNECT_RTSP_KLV_FIRST_METADATA_TIMEOUT:120s}
+    socket:
+      read-timeout-seconds: 10
+      tcp-keepalive: true
+      max-message-size-bytes: 1_048_576
+  cloud:
+    provider: "azure"
+  blob:
+    container-name: ${cloud.blob.container-name}
+    account-name: ${cloud.blob.account-name}
+    account-key: ${cloud.blob.account-key}
+    endpoint: ${cloud.blob.endpoint}
+
+  messaging-broker:
+    provider: ${MESSAGING_BROKER_PROVIDER}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

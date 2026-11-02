@@ -1,0 +1,116 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  port: 8078
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    csrf:
+      enabled: true
+      use-session-storage: true
+      session-storage-key: XSRF-TOKEN
+      header-name: X-XSRF-TOKEN
+
+spring:
+  servlet:
+    multipart:
+      # 50MB upload limit per file
+      max-file-size: 50MB
+      max-request-size: 50MB
+  session:
+    servlet:
+      cookie:
+        secure: false
+        http-only: true
+        same-site: Lax
+
+opencop:
+  dev.mode: true
+  media:
+    max-attachments-per-event: ${MEDIA_MAX_ATTACHMENTS_PER_EVENT:20}
+  core:
+    startup-leader:
+      enabled: ${OPENCOP_LEADER_ELECTION_ENABLED:false}
+    auto-start-enabled-data-sources-on-startup:
+      enabled: true
+      expected-connect-instances: ${EXPECTED_CONNECT_INSTANCES:1}
+      connect-ready-timeout-seconds: ${CONNECT_READY_TIMEOUT_SECONDS:600}
+  domain: http://localhost:3000
+  scim:
+    bearer-token: opencop-local-dev-scim-bearer-token
+  layer:
+    import:
+      max-bytes: 52428800  # 50MB
+  blob:
+    container-name: "opencop-common"
+    account-name: devstoreaccount1
+    account-key: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+    endpoint: http://localhost:10000/devstoreaccount1
+    public-endpoint: http://localhost:10000/devstoreaccount1
+    media:
+      container-name: opencop-common
+      sas-expiry-minutes: ${MEDIA_SAS_EXPIRY_MINUTES:10}
+  messaging-broker:
+    provider: local
+    properties:
+      # bootstrap = AdminClient (topic/ACL ops), sasl-bootstrap = external BYOD producer endpoint.
+      # These are intentionally separate — same broker, different listeners/ports.
+      bootstrap-url: ${KAFKA_BOOTSTRAP_URL:localhost:9092}
+      sasl-bootstrap-url: ${BYOD_SASL_BOOTSTRAP:${BYOD_EXTERNAL_HOST:localhost}:9094}
+      default-producer-byte-rate: 1_048_576
+      topic-partitions: 10
+  byod:
+    sources-topic: opencop.byod.sources
+  mediamtx:
+    enabled: true
+    api:
+      base-url: ${MEDIAMTX_API_BASE_URL:http://localhost:9997}
+      username: ${MEDIAMTX_API_USERNAME:opencop-core-local}
+      password: ${MEDIAMTX_API_PASSWORD:opencop-local-mediamtx-api}
+    hls:
+      public-base-url: http://localhost/streams
+  db:
+    url: jdbc:postgresql://localhost:5432/opencop-db
+    username: admin
+    password: mypassword
+    driver: org.postgresql.Driver
+  secrets:
+    vault:
+      provider: kv
+      addr: http://127.0.0.1:8202
+      mount: kv
+      token-file: ""   # not used locally
+
+redis:
+  host: localhost
+  port: 6379
+
+kafka:
+  bootstrap:
+    url: ${KAFKA_BOOTSTRAP_URL:localhost:9092}
+
+# To enforce groups and roles where a user has to be part of one of the groups with one of the assigned role
+# You can add properties as a flat array like this
+# idp.allowed.0.group=group1
+# idp.allowed.0.roles=admin,user
+# idp.allowed.1.group=group2
+# The above example will allow users to login to opencop if they are part of group1 with one of the required role
+# or if they are part of group 2 (no roles enforced)
+idp:
+  issuer: http://localhost/auth/realms/master
+  user-id-claim: sub
+  audience: CORE-API
+  admin:
+    client-id: CORE-API
+    client-secret: opencop-local-dev-idp-client-secret
+
+#logging:
+#  level:
+#    org:
+#      hibernate:
+#        SQL: DEBUG
+#        orm.jdbc.bind: TRACE

@@ -1,0 +1,24 @@
+<!-- Copyright 2026 NexTech Solutions LLC -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+  <!--
+    DuplicateMessageFilter is intentionally disabled.
+    DuplicateMessageFilter has no TTL; repeated messages stay suppressed until LRU eviction.
+    Operators may re-enable it in an emergency, but prefer a custom TTL/rate-limited filter
+    if broad log suppression is needed again.
+  -->
+  <!--
+    <turboFilter class="ch.qos.logback.classic.turbo.DuplicateMessageFilter">
+      <allowedRepetitions>5</allowedRepetitions>
+      <cacheSize>100</cacheSize>
+    </turboFilter>
+  -->
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

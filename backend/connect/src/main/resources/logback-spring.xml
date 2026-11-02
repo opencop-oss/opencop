@@ -1,0 +1,26 @@
+<!-- Copyright 2026 NexTech Solutions LLC -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+<configuration>
+  <!-- Preserve Spring Boot's console format while rendering SLF4J 2 key-value context. -->
+  <property name="CONSOLE_LOG_PATTERN" value="${CONSOLE_LOG_PATTERN:-%clr(%d{${LOG_DATEFORMAT_PATTERN:-yyyy-MM-dd'T'HH:mm:ss.SSSXXX}}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}){} %clr(${PID:-}){magenta} %clr(--- %esb(){APPLICATION_NAME}%esb{APPLICATION_GROUP}[%15.15t] ${LOG_CORRELATION_PATTERN:-}){faint}%clr(%-40.40logger{39}){cyan} %clr(:){faint} %m %kvp%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}}"/>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+  <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+  <!--
+    DuplicateMessageFilter is intentionally disabled.
+    DuplicateMessageFilter has no TTL; repeated messages stay suppressed until LRU eviction.
+    Operators may re-enable it in an emergency, but prefer a custom TTL/rate-limited filter
+    if broad log suppression is needed again.
+  -->
+  <!--
+    <turboFilter class="ch.qos.logback.classic.turbo.DuplicateMessageFilter">
+      <allowedRepetitions>5</allowedRepetitions>
+      <cacheSize>100</cacheSize>
+    </turboFilter>
+  -->
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

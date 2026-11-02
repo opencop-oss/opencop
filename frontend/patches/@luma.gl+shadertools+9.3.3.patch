@@ -1,0 +1,42 @@
+diff --git a/node_modules/@luma.gl/shadertools/dist/lib/shader-assembly/assemble-shaders.js b/node_modules/@luma.gl/shadertools/dist/lib/shader-assembly/assemble-shaders.js
+index 7e45c69..d019a91 100644
+--- a/node_modules/@luma.gl/shadertools/dist/lib/shader-assembly/assemble-shaders.js
++++ b/node_modules/@luma.gl/shadertools/dist/lib/shader-assembly/assemble-shaders.js
+@@ -280,6 +280,13 @@ ${getApplicationDefines(allDefines)}
+     assembledSource += coreSource;
+     // Apply any requested shader injections
+     assembledSource = injectShader(assembledSource, stage, mainInjections);
++    // PATCH(luma-fragcolor-location): GLSL ES 3.00 requires every fragment output to declare a
++    // location once any output declares one, so pin fragColor to 0 when a second location appears.
++    if (language === 'glsl' &&
++        stage === 'fragment' &&
++        /\blayout\s*\(\s*location\s*=\s*[1-9]\d*\s*\)/.test(assembledSource)) {
++        assembledSource = assembledSource.replace(/(^|\n)([ \t]*)out\s+vec4\s+fragColor\s*;/, '$1$2layout(location = 0) out vec4 fragColor;');
++    }
+     if (language === 'glsl' && sourceVersion !== targetVersion) {
+         assembledSource = transpileGLSLShader(assembledSource, stage);
+     }
+diff --git a/node_modules/@luma.gl/shadertools/src/lib/shader-assembly/assemble-shaders.ts b/node_modules/@luma.gl/shadertools/src/lib/shader-assembly/assemble-shaders.ts
+index fdca3c1..45053ae 100644
+--- a/node_modules/@luma.gl/shadertools/src/lib/shader-assembly/assemble-shaders.ts
++++ b/node_modules/@luma.gl/shadertools/src/lib/shader-assembly/assemble-shaders.ts
+@@ -464,6 +464,19 @@ ${getApplicationDefines(allDefines)}
+   // Apply any requested shader injections
+   assembledSource = injectShader(assembledSource, stage, mainInjections);
+ 
++  // PATCH(luma-fragcolor-location): GLSL ES 3.00 requires every fragment output to declare a
++  // location once any output declares one, so pin fragColor to 0 when a second location appears.
++  if (
++    language === 'glsl' &&
++    stage === 'fragment' &&
++    /\blayout\s*\(\s*location\s*=\s*[1-9]\d*\s*\)/.test(assembledSource)
++  ) {
++    assembledSource = assembledSource.replace(
++      /(^|\n)([ \t]*)out\s+vec4\s+fragColor\s*;/,
++      '$1$2layout(location = 0) out vec4 fragColor;'
++    );
++  }
++
+   if (language === 'glsl' && sourceVersion !== targetVersion) {
+     assembledSource = transpileGLSLShader(assembledSource, stage);
+   }

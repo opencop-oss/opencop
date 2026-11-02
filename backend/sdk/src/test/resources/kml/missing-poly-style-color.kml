@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>Missing PolyStyle Color</name>
+	<Schema name="test_schema" id="test_schema">
+		<SimpleField type="string" name="CODE"></SimpleField>
+		<SimpleField type="string" name="LABEL"></SimpleField>
+		<SimpleField type="string" name="CATEGORY"></SimpleField>
+	</Schema>
+	<!--
+		Regression case: this PolyStyle has <fill>0</fill> without a <color> element.
+		The style and all placemarks should still parse and map successfully.
+	-->
+	<Style id="s_normal_a">
+		<LineStyle>
+			<color>ffff5500</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<Style id="s_highlight_a">
+		<LineStyle>
+			<color>ffff5500</color>
+			<width>3</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<Style id="s_normal_b">
+		<LineStyle>
+			<color>ff0000ff</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<color>7f00ff00</color>
+			<fill>1</fill>
+		</PolyStyle>
+	</Style>
+	<Style id="s_highlight_b">
+		<LineStyle>
+			<color>ff0000ff</color>
+			<width>3</width>
+		</LineStyle>
+		<PolyStyle>
+			<color>7f00ff00</color>
+			<fill>1</fill>
+		</PolyStyle>
+	</Style>
+	<StyleMap id="sm_a">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#s_normal_a</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#s_highlight_a</styleUrl>
+		</Pair>
+	</StyleMap>
+	<StyleMap id="sm_b">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#s_normal_b</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#s_highlight_b</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Folder>
+		<name>Regions</name>
+		<Placemark>
+			<name>Region A</name>
+			<description>Region A</description>
+			<styleUrl>#sm_a</styleUrl>
+			<ExtendedData>
+				<SchemaData schemaUrl="#test_schema">
+					<SimpleData name="CODE">RA</SimpleData>
+					<SimpleData name="LABEL">Region A</SimpleData>
+					<SimpleData name="CATEGORY">Zone 1</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<MultiGeometry>
+				<Polygon>
+					<outerBoundaryIs>
+						<LinearRing>
+							<coordinates>
+								0,0,0 1,0,0 1,1,0 0,1,0 0,0,0
+							</coordinates>
+						</LinearRing>
+					</outerBoundaryIs>
+				</Polygon>
+			</MultiGeometry>
+		</Placemark>
+		<Placemark>
+			<name>Region B</name>
+			<description>Region B</description>
+			<styleUrl>#sm_b</styleUrl>
+			<ExtendedData>
+				<SchemaData schemaUrl="#test_schema">
+					<SimpleData name="CODE">RB</SimpleData>
+					<SimpleData name="LABEL">Region B</SimpleData>
+					<SimpleData name="CATEGORY">Zone 2</SimpleData>
+				</SchemaData>
+			</ExtendedData>
+			<MultiGeometry>
+				<Polygon>
+					<outerBoundaryIs>
+						<LinearRing>
+							<coordinates>
+								2,2,0 3,2,0 3,3,0 2,3,0 2,2,0
+							</coordinates>
+						</LinearRing>
+					</outerBoundaryIs>
+				</Polygon>
+			</MultiGeometry>
+		</Placemark>
+		<Placemark>
+			<name>Region C</name>
+			<description>Region C</description>
+			<styleUrl>#sm_a</styleUrl>
+			<MultiGeometry>
+				<Polygon>
+					<outerBoundaryIs>
+						<LinearRing>
+							<coordinates>
+								4,4,0 5,4,0 5,5,0 4,5,0 4,4,0
+							</coordinates>
+						</LinearRing>
+					</outerBoundaryIs>
+				</Polygon>
+			</MultiGeometry>
+		</Placemark>
+	</Folder>
+</Document>
+</kml>

@@ -1,0 +1,199 @@
+{
+  "id": "f6c26161-4cdc-4122-b781-4a2cad937cfe",
+  "name": "KML-KMZ",
+  "description": "KML Placemark -> OpenCOP feature metadata + basic style",
+  "editable": false,
+  "version": 1,
+  "dynamicMapper": {
+    "enabled": true,
+    "formatConfig": {
+      "type": "kml+kmz",
+      "namespaces": {
+        "kml": "http://www.opengis.net/kml/2.2",
+        "gx": "http://www.google.com/kml/ext/2.2"
+      },
+      "strict": true
+    },
+    "recordSelector": {
+      "source": {
+        "type": "xpath",
+        "expr": "//kml:Placemark",
+        "onMissing": "ERROR"
+      },
+      "onMissing": "ERROR"
+    },
+    "rules": [
+      {
+        "enabled": true,
+        "target": "GEOMETRY",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kmlgeom:geojson",
+          "onMissing": "ERROR",
+          "default": null
+        }
+      },
+      {
+        "enabled": true,
+        "target": "DISPLAY_NAME",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kml:name/text()",
+          "onMissing": "NULL",
+          "default": null
+        },
+        "transforms": [
+          {
+            "op": "TRIM"
+          }
+        ]
+      },
+      {
+        "enabled": true,
+        "target": "ELEMENT_ICON_LOCATION",
+        "source": {
+          "type": "xpath",
+          "expr": "kmlstyle:iconHref",
+          "onMissing": "NULL",
+          "default": null
+        },
+        "transforms": [
+          {
+            "op": "TRIM"
+          }
+        ]
+      },
+      {
+        "enabled": true,
+        "target": "UPDATED_AT",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kml:TimeStamp/kml:when/text()",
+          "onMissing": "NULL",
+          "default": null
+        },
+        "transforms": [
+          {
+            "op": "TRIM"
+          }
+        ]
+      },
+      {
+        "enabled": true,
+        "target": "START_AT",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kml:TimeSpan/kml:begin/text()",
+          "onMissing": "NULL",
+          "default": null
+        },
+        "transforms": [
+          {
+            "op": "TRIM"
+          }
+        ]
+      },
+      {
+        "enabled": true,
+        "target": "STALE_AT",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kml:TimeSpan/kml:end/text()",
+          "onMissing": "NULL",
+          "default": null
+        },
+        "transforms": [
+          {
+            "op": "TRIM"
+          }
+        ]
+      },
+      {
+        "enabled": true,
+        "target": "STYLE_STROKE_COLOR",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kmlstyle:strokeColor",
+          "onMissing": "NULL",
+          "default": null
+        }
+      },
+      {
+        "enabled": true,
+        "target": "STYLE_STROKE_WIDTH",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kmlstyle:strokeWidth",
+          "onMissing": "NULL",
+          "default": null
+        },
+        "transforms": [
+          {
+            "op": "TRIM"
+          }
+        ]
+      },
+      {
+        "enabled": true,
+        "target": "STYLE_FILL_COLOR",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kmlstyle:fillColor",
+          "onMissing": "NULL",
+          "default": null
+        }
+      },
+      {
+        "enabled": true,
+        "target": "STYLE_FILL_OPACITY",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kmlstyle:fillOpacity",
+          "onMissing": "NULL",
+          "default": null
+        }
+      },
+      {
+        "enabled": true,
+        "target": "RAW_STYLE_URL",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "kml:styleUrl/text()",
+          "onMissing": "NULL",
+          "default": null
+        },
+        "transforms": [
+          {
+            "op": "TRIM"
+          }
+        ]
+      },
+      {
+        "enabled": true,
+        "target": "ATTRIBUTES",
+        "contextRef": null,
+        "source": {
+          "type": "xpath",
+          "expr": "xml:kvJson(list=\"kml:ExtendedData/(kml:Data|kml:SchemaData/kml:SimpleData)\", key=\"@name\", value=\"(kml:value/text()|text())[1]\")",
+          "onMissing": "NULL",
+          "default": null
+        },
+        "transforms": [
+          {
+            "op": "TRIM"
+          }
+        ]
+      }
+    ]
+  }
+}

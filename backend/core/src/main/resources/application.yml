@@ -1,0 +1,212 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      tracking-modes: cookie
+
+spring:
+  config:
+    import: "optional:configtree:/run/secrets/"
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+  application:
+    name: opencop-core
+  datasource:
+    url: ${opencop.db.url}
+    username: ${opencop.db.username}
+    password: ${opencop.db.password}
+    driver-class-name: ${opencop.db.driver}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 1
+      connection-timeout: 10000
+      validation-timeout: 3000
+      initialization-fail-timeout: -1
+      idle-timeout: 240000
+      max-lifetime: 1800000
+      data-source-properties:
+        tcpKeepAlive: true
+        logServerErrorDetail: false
+  flyway:
+    locations: classpath:db/migration
+    placeholders:
+      postgisExtensionSql: "CREATE EXTENSION IF NOT EXISTS postgis;"
+      geoFeaturesGeomType: "geometry(GeometryZ, 4326) NOT NULL"
+      geoFeaturesGeomIndexSql: "CREATE INDEX IF NOT EXISTS geofeatures_geom_gist ON geo.features USING GIST (geom);"
+      geoFeaturesHistoryChunkIndexSql: "CREATE INDEX IF NOT EXISTS geofeatures_history_chunk_idx ON geo.features (source, COALESCE(start_at, created_at), object_id, id);"
+  jackson:
+    datatype:
+      enum:
+        # Public enum wire values are documented names, not Java declaration-order ordinals;
+        # reject numeric and quoted-numeric tokens instead of silently binding by ordinal.
+        fail-on-numbers-for-enums: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  threads:
+    virtual:
+      enabled: true
+  session:
+    store-type: redis
+    servlet:
+      cookie:
+        name: OPENCOP_BFF
+        path: /
+        secure: true
+        http-only: true
+        same-site: Lax
+    redis:
+      namespace: opencop:bff
+  data:
+    redis:
+      host: ${redis.host:localhost}
+      port: ${redis.port:6379}
+      password: ${redis.password:}
+      ssl:
+        enabled: ${redis.ssl:false}
+      timeout: 5s
+  security:
+    oauth2:
+      client:
+        registration:
+          oidc:
+            provider: oidc
+            client-id: ${idp.admin.client-id}
+            client-secret: ${idp.admin.client-secret}
+            scope: openid, profile, email
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          oidc:
+            issuer-uri: ${idp.issuer:}
+            # NO issuer-uri in dev
+            authorization-uri: ${idp.authorization-uri:}
+            token-uri: ${idp.token-uri:}
+            jwk-set-uri: ${idp.jwk-set-uri:}
+            user-info-uri: ${idp.user-info-uri:}
+            user-name-attribute: sub
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    org.springframework.security.web: INFO
+    # Handled-exception DEBUG here can retain the original exception and rejected request value
+    # even when a controller advice logs only a generic message. Pinning this exact category
+    # keeps broad root/Spring DEBUG from enabling it accidentally; an operator can still opt in
+    # to this exact category deliberately for a bounded diagnostic session.
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: INFO
+    org:
+      springframework:
+        messaging: ${logging.level:INFO}
+        web.socket: ${logging.level:INFO}
+    org.flywaydb: debug
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+opencop:
+  auth:
+    current-account-cache:
+      ttl: ${OPENCOP_CURRENT_ACCOUNT_CACHE_TTL:15m}
+  cloud:
+    provider: "azure"
+  build:
+    app-version: ${APP_VERSION:}
+    revision: ${BUILD_REVISION:}
+    branch: ${BUILD_BRANCH:}
+    date: ${BUILD_DATE:}
+  dev.mode: false
+  media:
+    max-attachments-per-event: ${MEDIA_MAX_ATTACHMENTS_PER_EVENT:20}
+  core:
+    startup-leader:
+      enabled: ${OPENCOP_LEADER_ELECTION_ENABLED:false}
+    auto-start-enabled-data-sources-on-startup:
+      enabled: true
+      expected-connect-instances: ${EXPECTED_CONNECT_INSTANCES:1}
+      connect-ready-timeout-seconds: ${CONNECT_READY_TIMEOUT_SECONDS:600}
+    assignment-reconciliation:
+      enabled: ${OPENCOP_CORE_ASSIGNMENT_RECONCILIATION_ENABLED:true}
+      interval: ${OPENCOP_CORE_ASSIGNMENT_RECONCILIATION_INTERVAL:15s}
+      initial-delay: ${OPENCOP_CORE_ASSIGNMENT_RECONCILIATION_INITIAL_DELAY:15s}
+    runtime-observation-cleanup:
+      enabled: ${OPENCOP_CORE_RUNTIME_OBSERVATION_CLEANUP_ENABLED:true}
+      interval: ${OPENCOP_CORE_RUNTIME_OBSERVATION_CLEANUP_INTERVAL:1h}
+      initial-delay: ${OPENCOP_CORE_RUNTIME_OBSERVATION_CLEANUP_INITIAL_DELAY:5m}
+      retention: ${OPENCOP_CORE_RUNTIME_OBSERVATION_CLEANUP_RETENTION:24h}
+    resource-activity-cleanup:
+      enabled: ${OPENCOP_CORE_RESOURCE_ACTIVITY_CLEANUP_ENABLED:true}
+      interval: ${OPENCOP_CORE_RESOURCE_ACTIVITY_CLEANUP_INTERVAL:6h}
+      initial-delay: ${OPENCOP_CORE_RESOURCE_ACTIVITY_CLEANUP_INITIAL_DELAY:10m}
+      # 7 days is Kafka's replay horizon, not a disk-space preference: ingest topics inherit the
+      # 168h broker default and DLT topics are provisioned with DLT_PAYLOAD_RETENTION (7d). Prune
+      # inside it and a replayed batch stops conflicting with the row that already recorded it.
+      retention: ${OPENCOP_ACTIVITY_RETENTION:7d}
+    connect-worker-run-cleanup:
+      enabled: ${OPENCOP_CORE_CONNECT_WORKER_RUN_CLEANUP_ENABLED:true}
+      interval: ${OPENCOP_CORE_CONNECT_WORKER_RUN_CLEANUP_INTERVAL:1h}
+      initial-delay: ${OPENCOP_CORE_CONNECT_WORKER_RUN_CLEANUP_INITIAL_DELAY:5m}
+      retention: ${OPENCOP_CORE_CONNECT_WORKER_RUN_CLEANUP_RETENTION:30d}
+  watchbox:
+    # How long a detection-heartbeat retained-retry episode may run before affected watchboxes
+    # degrade with WATCHBOX_DETECTION_PARTIALLY_STALLED. Processor clears the facts only from
+    # positive batch success, terminal error-handler completion, or assignment lifecycle evidence.
+    detection-degrade-threshold: ${WATCHBOX_DETECTION_DEGRADE_THRESHOLD:60s}
+  domain: ${opencop.domain}
+  bff:
+    ws:
+      ticket-ttl-seconds: 60
+  scim:
+    bearer-token: ${opencop.scim.bearer-token}
+    # Unsafe diagnostic: may retain authenticated SCIM identity payloads in application logs.
+    # Do not enable for routine production use.
+    inbound-logging-enabled: ${OPENCOP_SCIM_INBOUND_LOGGING_ENABLED:false}
+  messaging-broker:
+    provider: ${MESSAGING_BROKER_PROVIDER}
+    dlt-indexing:
+      payload-retention: ${DLT_PAYLOAD_RETENTION:7d}
+  listeners:
+    notification:
+      topic: opencop.notification
+      groupId: opencop-notification
+      concurrency: 1
+      maxRetries: 5
+      valueType: notification
+  layer:
+    import:
+      max-bytes: 52428800  # 50MB
+  blob:
+    container-name: ${cloud.blob.container-name}
+    account-name: ${cloud.blob.account-name}
+    account-key: ${cloud.blob.account-key}
+    endpoint: ${cloud.blob.endpoint}
+    public-endpoint: ${cloud.blob.public-endpoint:}
+    media:
+      container-name: ${MEDIA_BLOB_CONTAINER:opencop-common}
+      sas-expiry-minutes: ${MEDIA_SAS_EXPIRY_MINUTES:10}
+  byod:
+    sources-topic: opencop.byod.sources
+  mediamtx:
+    enabled: ${MEDIAMTX_ENABLED:false}
+    api:
+      base-url: ${MEDIAMTX_API_BASE_URL:}
+      username: ${MEDIAMTX_API_USERNAME:}
+      password: ${MEDIAMTX_API_PASSWORD:}
+    hls:
+      public-base-url: ${MEDIAMTX_HLS_PUBLIC_BASE_URL}
+  idp:
+    issuer: ${idp.issuer}

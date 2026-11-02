@@ -1,0 +1,26 @@
+{
+    "toolbar": {
+        "textbox": "文字框"
+    },
+    "style": {
+        "fillColor": "填充顏色",
+        "strokeColor": "筆畫顏色",
+        "strokeWeight": "筆畫粗細",
+        "strokePattern": "筆畫樣式"
+    },
+    "editor": {
+        "title": "文字框",
+        "contentLabel": "文字",
+        "contentPlaceholder": "輸入文字框內容…",
+        "colorLabel": "文字顏色",
+        "visibleLabel": "顯示文字",
+        "visibleDescription": "隱藏文字但不刪除。",
+        "sizeLabelWithUnit": "文字大小（{{unit}}）",
+        "sizeInvalid": "文字大小必須是數字，後面可加上 {{unit}}。",
+        "sizePresets": "預設大小"
+    },
+    "editorPanel": {
+        "collapse": "收合面板",
+        "expand": "展開面板"
+    }
+}

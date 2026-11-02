@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+/license-audit-artifacts/
+chakra-config.json
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# Playwright
+playwright-report
+test-results
+playwright
+blob-report
+# Snapshots and console logs written by `npm run playwright:cli`
+.playwright-cli
+
+# Generated files
+CLAUDE_NOTES.md
+.mcp.json
+.claude
+
+# Perf test results (local only)
+e2e/perf/results/
+
+ci/license-audit/tests/__pycache__/
+ci/license-audit/audit-scripts/__pycache__/

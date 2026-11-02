@@ -1,0 +1,26 @@
+{
+    "toolbar": {
+        "textbox": "Zone de texte"
+    },
+    "style": {
+        "fillColor": "Couleur de remplissage",
+        "strokeColor": "Couleur du contour",
+        "strokeWeight": "Épaisseur du trait",
+        "strokePattern": "Style du trait"
+    },
+    "editor": {
+        "title": "ZONE DE TEXTE",
+        "contentLabel": "Texte",
+        "contentPlaceholder": "Saisir le contenu de la zone…",
+        "colorLabel": "Couleur du texte",
+        "visibleLabel": "Afficher le texte",
+        "visibleDescription": "Masquer le texte sans le supprimer.",
+        "sizeLabelWithUnit": "Taille du texte ({{unit}})",
+        "sizeInvalid": "La taille du texte doit être un nombre, éventuellement suivi de {{unit}}.",
+        "sizePresets": "Tailles prédéfinies"
+    },
+    "editorPanel": {
+        "collapse": "Réduire le panneau",
+        "expand": "Développer le panneau"
+    }
+}

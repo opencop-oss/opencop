@@ -1,0 +1,25 @@
+# Note: we use a multi-stage Docker build 
+# so you don't have to be *too* careful with this list
+# (only the built dist folder will end up in the final image)
+
+# Dependencies - installed fresh in container
+node_modules
+
+# Build output - built fresh in container
+dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test/coverage
+coverage

@@ -1,0 +1,47 @@
+/* Copyright 2026 NexTech Solutions LLC */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Generic table styles */
+.table {
+    width: 100%;
+    min-width: 400px;
+    table-layout: fixed;
+    border-radius: var(--chakra-radii-3xl);
+    border-collapse: collapse;
+    border-spacing: 0;
+    overflow: hidden;
+}
+
+.theadRow {
+    height: 50px;
+}
+
+.tbodyRow {
+    height: 50px;
+    transition: background 0.2s ease-out;
+}
+
+.cell {
+    padding-left: 15px;
+    padding-right: 20px;
+    font-weight: 600;
+    font-family: var(--chakra-fonts-body);
+    width: 100px;
+}
+
+.actionCell {
+    padding-right: 35px;
+    width: 100px;
+}
+
+/* Pagination buttons */
+.pageBtn {
+    width: 35px;
+    height: 35px;
+    border-radius: var(--chakra-radii-xl);
+    user-select: none;
+    transition: background-color 0.2s ease-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

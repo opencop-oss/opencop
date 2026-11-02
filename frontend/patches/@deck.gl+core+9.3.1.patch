@@ -1,0 +1,502 @@
+diff --git a/node_modules/@deck.gl/core/dist/lib/composite-layer.js b/node_modules/@deck.gl/core/dist/lib/composite-layer.js
+index 044cb2a..29f38fa 100644
+--- a/node_modules/@deck.gl/core/dist/lib/composite-layer.js
++++ b/node_modules/@deck.gl/core/dist/lib/composite-layer.js
+@@ -141,15 +141,6 @@ class CompositeLayer extends Layer {
+                 }
+             }
+         }
+-        Object.assign(newProps, sublayerProps, 
+-        // experimental feature that allows users to override sublayer props via parent layer prop
+-        overridingSublayerProps);
+-        newProps.id = `${this.props.id}-${sublayerId}`;
+-        newProps.updateTriggers = {
+-            all: this.props.updateTriggers?.all,
+-            ...sublayerProps.updateTriggers,
+-            ...overridingSublayerTriggers
+-        };
+         // Pass through extension props
+         // @ts-ignore (TS2532) extensions is always defined after merging with default props
+         for (const extension of extensions) {
+@@ -160,6 +151,19 @@ class CompositeLayer extends Layer {
+                 });
+             }
+         }
++        // Capture extension-forwarded updateTriggers (e.g. getOutline) before the
++        // Object.assign + reassignment below would otherwise discard them.
++        const extensionTriggers = newProps.updateTriggers;
++        Object.assign(newProps, sublayerProps,
++        // experimental feature that allows users to override sublayer props via parent layer prop
++        overridingSublayerProps);
++        newProps.id = `${this.props.id}-${sublayerId}`;
++        newProps.updateTriggers = {
++            all: this.props.updateTriggers?.all,
++            ...extensionTriggers,
++            ...sublayerProps.updateTriggers,
++            ...overridingSublayerTriggers
++        };
+         return newProps;
+     }
+     /** Update sub layers to highlight the hovered object */
+diff --git a/node_modules/@deck.gl/core/dist/lib/deck-renderer.js b/node_modules/@deck.gl/core/dist/lib/deck-renderer.js
+index b7f2b16..330823e 100644
+--- a/node_modules/@deck.gl/core/dist/lib/deck-renderer.js
++++ b/node_modules/@deck.gl/core/dist/lib/deck-renderer.js
+@@ -41,12 +41,18 @@ export default class DeckRenderer {
+         if (renderOpts.effects) {
+             this._preRender(renderOpts.effects, renderOpts);
+         }
+-        const outputBuffer = this.lastPostProcessEffect ? this.renderBuffers[0] : renderOpts.target;
++        // PATCH(msaa-scene): render into the multisampled buffer (resolved below) instead of
++        // the single-sample renderBuffers[0], so post-process effects sample an AA'd scene.
++        const outputBuffer = this.lastPostProcessEffect ? (this._msaaFramebuffer || this.renderBuffers[0]) : renderOpts.target;
+         if (this.lastPostProcessEffect) {
+             renderOpts.clearColor = [0, 0, 0, 0];
+             renderOpts.clearCanvas = true;
+         }
+         const renderResult = layerPass.render({ ...renderOpts, target: outputBuffer });
++        // PATCH(msaa-scene): resolve the multisampled scene into renderBuffers[0] before effects read it.
++        if (this.lastPostProcessEffect && this._msaaFramebuffer) {
++            this._resolveMSAA();
++        }
+         const renderStats = 'stats' in renderResult ? renderResult.stats : renderResult;
+         if (renderOpts.effects) {
+             if (this.lastPostProcessEffect) {
+@@ -72,6 +78,7 @@ export default class DeckRenderer {
+             buffer.delete();
+         }
+         renderBuffers.length = 0;
++        this._destroyMSAA();
+     }
+     _updateStats(source) {
+         if (!this.stats)
+@@ -87,7 +94,9 @@ export default class DeckRenderer {
+         opts.preRenderStats = opts.preRenderStats || {};
+         for (const effect of effects) {
+             opts.preRenderStats[effect.id] = effect.preRender(opts);
+-            if (effect.postRender) {
++            // PATCH(post-process-active): only treat the effect as post-processing (which drives
++            // the scene→renderBuffers→MSAA capture) when it reports itself active this frame.
++            if (effect.postRender && effect.isActive !== false) {
+                 this.lastPostProcessEffect = effect.id;
+             }
+         }
+@@ -108,13 +117,88 @@ export default class DeckRenderer {
+                 });
+                 renderBuffers.push(this.device.createFramebuffer({
+                     id: `deck-renderbuffer-${i}`,
+-                    colorAttachments: [texture]
++                    colorAttachments: [texture],
++                    // PATCH(scene-depth): index 0 is the resolved scene buffer handed to post-process
++                    // effects as `inputBuffer`. Attach a *sampleable* depth texture so effects can read
++                    // scene depth via `inputBuffer.depthStencilAttachment`. Created explicitly with
++                    // NEAREST filtering and no compare mode so a plain `sampler2D` reads it as `.r`
++                    // (depth textures sampled with LINEAR are invalid in WebGL2). DEPTH_COMPONENT24
++                    // matches the MSAA depth renderbuffer so _resolveMSAA can blit color+depth in one
++                    // pass; the non-MSAA path depth-tests directly into it. Index 1 (swap) needs no depth.
++                    depthStencilAttachment: i === 0
++                        ? this.device.createTexture({
++                            format: 'depth24plus',
++                            sampler: { minFilter: 'nearest', magFilter: 'nearest' },
++                            width,
++                            height
++                        })
++                        : undefined
+                 }));
+             });
+         }
+         for (const buffer of renderBuffers) {
+             buffer.resize(size);
+         }
++        this._resizeMSAA(width, height);
++    }
++    // PATCH(msaa-scene): build a multisampled color renderbuffer FBO sized to the drawing
++    // buffer. luma's WebGL backend has no MSAA framebuffer API, so we use the raw context
++    // and wrap the handle so LayersPass can bind it. WebGL2 only; skipped on WebGPU/no-gl.
++    _resizeMSAA(width, height) {
++        const gl = this.device.gl;
++        if (!gl || typeof gl.renderbufferStorageMultisample !== 'function') {
++            return;
++        }
++        if (this._msaaSize && this._msaaSize[0] === width && this._msaaSize[1] === height) {
++            return;
++        }
++        this._destroyMSAA();
++        const samples = Math.min(4, gl.getParameter(gl.MAX_SAMPLES));
++        const fbo = gl.createFramebuffer();
++        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
++        const color = gl.createRenderbuffer();
++        gl.bindRenderbuffer(gl.RENDERBUFFER, color);
++        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, width, height);
++        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color);
++        // PATCH(msaa-scene): depth attachment so the scene capture depth-tests identically to
++        // the default canvas framebuffer (which has depth). Without it, depthWriteEnabled/
++        // depthCompare on layers become no-ops while a post-process effect is active, flipping
++        // the z-order of equal-depth overlapping geometry (e.g. billboarded icons). Match samples.
++        const depth = gl.createRenderbuffer();
++        gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
++        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, width, height);
++        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
++        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
++        this._msaaGL = { fbo, color, depth };
++        this._msaaSize = [width, height];
++        this._msaaFramebuffer = this.device.createFramebuffer({ id: 'deck-msaa-scene', handle: fbo, width, height });
++    }
++    // PATCH(msaa-scene): blit-resolve the multisampled scene into the sampleable
++    // renderBuffers[0] texture, then restore the default binding so luma's state tracker
++    // rebinds correctly on the next pass.
++    _resolveMSAA() {
++        const gl = this.device.gl;
++        const [width, height] = this._msaaSize;
++        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._msaaGL.fbo);
++        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.renderBuffers[0].handle);
++        // PATCH(scene-depth): resolve color + depth in a single blit so renderBuffers[0] carries
++        // readable scene depth (sampled via its depthStencilAttachment). NEAREST is mandatory once
++        // the mask includes DEPTH_BUFFER_BIT, and both sides use DEPTH_COMPONENT24 so formats match.
++        gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, gl.NEAREST);
++        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
++    }
++    _destroyMSAA() {
++        if (!this._msaaGL) {
++            return;
++        }
++        const gl = this.device.gl;
++        this._msaaFramebuffer?.destroy();
++        gl.deleteFramebuffer(this._msaaGL.fbo);
++        gl.deleteRenderbuffer(this._msaaGL.color);
++        gl.deleteRenderbuffer(this._msaaGL.depth);
++        this._msaaGL = null;
++        this._msaaFramebuffer = null;
++        this._msaaSize = null;
+     }
+     _postRender(effects, opts) {
+         const { renderBuffers } = this;
+@@ -124,7 +208,9 @@ export default class DeckRenderer {
+             swapBuffer: renderBuffers[1]
+         };
+         for (const effect of effects) {
+-            if (effect.postRender) {
++            // PATCH(post-process-active): skip inactive post-process effects entirely — otherwise
++            // postRender runs with an undefined inputBuffer (renderBuffers are never sized).
++            if (effect.postRender && effect.isActive !== false) {
+                 // If not the last post processing effect, unset the target so that
+                 // it only renders between the swap buffers
+                 params.target = effect.id === this.lastPostProcessEffect ? opts.target : undefined;
+diff --git a/node_modules/@deck.gl/core/dist/lib/effect.d.ts b/node_modules/@deck.gl/core/dist/lib/effect.d.ts
+index b67d4cb..902d9b3 100644
+--- a/node_modules/@deck.gl/core/dist/lib/effect.d.ts
++++ b/node_modules/@deck.gl/core/dist/lib/effect.d.ts
+@@ -19,6 +19,9 @@ export interface Effect {
+     useInPicking?: boolean;
+     /** Effects with smaller value gets executed first. If not provided, will get executed in the order added. */
+     order?: number;
++    /** PATCH(post-process-active): when explicitly `false`, the renderer skips this effect's
++     * post-process pass and the MSAA scene capture it would trigger. Defaults to active. */
++    isActive?: boolean;
+     /** Called before layers are rendered to screen */
+     preRender(opts: PreRenderOptions): void;
+     /** Called after layers are rendered to screen */
+diff --git a/node_modules/@deck.gl/core/dist/utils/tesselator.js b/node_modules/@deck.gl/core/dist/utils/tesselator.js
+index 7b07462..eef8362 100644
+--- a/node_modules/@deck.gl/core/dist/utils/tesselator.js
++++ b/node_modules/@deck.gl/core/dist/utils/tesselator.js
+@@ -122,6 +122,13 @@ export default class Tesselator {
+                     vertexStarts[dataIndex] +
+                         (normalizedGeometry ? this.getGeometrySize(normalizedGeometry) : 0);
+             }, startRow, endRow);
++            let length;
++            if (Array.isArray(data)) length = data.length;
++            else if (data instanceof Set || data instanceof Map) length = data.size;
++            if (length !== undefined) {
++                vertexStarts.length = length + 1;
++                indexStarts.length = vertexStarts.length;
++            }
+             // count instances
+             instanceCount = vertexStarts[vertexStarts.length - 1];
+         }
+diff --git a/node_modules/@deck.gl/core/src/lib/composite-layer.ts b/node_modules/@deck.gl/core/src/lib/composite-layer.ts
+index 6b38f8b..f8bea1a 100644
+--- a/node_modules/@deck.gl/core/src/lib/composite-layer.ts
++++ b/node_modules/@deck.gl/core/src/lib/composite-layer.ts
+@@ -209,6 +209,20 @@ export default abstract class CompositeLayer<PropsT extends {} = {}> extends Lay
+       }
+     }
+ 
++    // Pass through extension props
++    // @ts-ignore (TS2532) extensions is always defined after merging with default props
++    for (const extension of extensions) {
++      const passThroughProps = extension.getSubLayerProps.call(this, extension);
++      if (passThroughProps) {
++        Object.assign(newProps, passThroughProps, {
++          updateTriggers: Object.assign(newProps.updateTriggers, passThroughProps.updateTriggers)
++        });
++      }
++    }
++
++    // Capture extension-forwarded updateTriggers (e.g. getOutline) before the
++    // Object.assign + reassignment below would otherwise discard them.
++    const extensionTriggers = newProps.updateTriggers;
+     Object.assign(
+       newProps,
+       sublayerProps,
+@@ -218,21 +232,11 @@ export default abstract class CompositeLayer<PropsT extends {} = {}> extends Lay
+     newProps.id = `${this.props.id}-${sublayerId}`;
+     newProps.updateTriggers = {
+       all: this.props.updateTriggers?.all,
++      ...extensionTriggers,
+       ...sublayerProps.updateTriggers,
+       ...overridingSublayerTriggers
+     };
+ 
+-    // Pass through extension props
+-    // @ts-ignore (TS2532) extensions is always defined after merging with default props
+-    for (const extension of extensions) {
+-      const passThroughProps = extension.getSubLayerProps.call(this, extension);
+-      if (passThroughProps) {
+-        Object.assign(newProps, passThroughProps, {
+-          updateTriggers: Object.assign(newProps.updateTriggers, passThroughProps.updateTriggers)
+-        });
+-      }
+-    }
+-
+     return newProps;
+   }
+ 
+diff --git a/node_modules/@deck.gl/core/src/lib/deck-renderer.ts b/node_modules/@deck.gl/core/src/lib/deck-renderer.ts
+index c34d40d..9cf87ab 100644
+--- a/node_modules/@deck.gl/core/src/lib/deck-renderer.ts
++++ b/node_modules/@deck.gl/core/src/lib/deck-renderer.ts
+@@ -31,6 +31,15 @@ export default class DeckRenderer {
+   private _needsRedraw: string | false;
+   private renderBuffers: Framebuffer[];
+   private lastPostProcessEffect: string | null;
++  // PATCH(msaa-scene): multisampled scene target + raw GL handles for blit-resolve.
++  // Only populated on WebGL2 devices; null on WebGPU / no-`gl` devices.
++  private _msaaFramebuffer: Framebuffer | null = null;
++  private _msaaGL: {
++    fbo: WebGLFramebuffer;
++    color: WebGLRenderbuffer;
++    depth: WebGLRenderbuffer;
++  } | null = null;
++  private _msaaSize: [number, number] | null = null;
+ 
+   constructor(device: Device, opts: {stats?: Stats} = {}) {
+     this.device = device;
+@@ -85,13 +94,22 @@ export default class DeckRenderer {
+       this._preRender(renderOpts.effects, renderOpts);
+     }
+ 
+-    const outputBuffer = this.lastPostProcessEffect ? this.renderBuffers[0] : renderOpts.target;
++    // PATCH(msaa-scene): when post-processing, render into the multisampled buffer
++    // (resolved below) instead of the single-sample renderBuffers[0], so effects sample
++    // an anti-aliased scene. Falls back to renderBuffers[0] when MSAA is unavailable.
++    const outputBuffer = this.lastPostProcessEffect
++      ? this._msaaFramebuffer || this.renderBuffers[0]
++      : renderOpts.target;
+ 
+     if (this.lastPostProcessEffect) {
+       renderOpts.clearColor = [0, 0, 0, 0];
+       renderOpts.clearCanvas = true;
+     }
+     const renderResult = layerPass.render({...renderOpts, target: outputBuffer});
++    // PATCH(msaa-scene): resolve the multisampled scene into renderBuffers[0] before effects read it.
++    if (this.lastPostProcessEffect && this._msaaFramebuffer) {
++      this._resolveMSAA();
++    }
+     const renderStats = 'stats' in renderResult ? renderResult.stats : renderResult;
+ 
+     if (renderOpts.effects) {
+@@ -123,6 +141,7 @@ export default class DeckRenderer {
+       buffer.delete();
+     }
+     renderBuffers.length = 0;
++    this._destroyMSAA(); // PATCH(msaa-scene)
+   }
+ 
+   private _updateStats(source: RenderStats[]) {
+@@ -140,7 +159,10 @@ export default class DeckRenderer {
+ 
+     for (const effect of effects) {
+       opts.preRenderStats[effect.id] = effect.preRender(opts);
+-      if (effect.postRender) {
++      // PATCH(post-process-active): only treat the effect as post-processing (which drives the
++      // scene→renderBuffers→MSAA capture) when it reports itself active this frame. preRender
++      // runs first, so an effect can set `isActive` based on whether it has work to do.
++      if (effect.postRender && effect.isActive !== false) {
+         this.lastPostProcessEffect = effect.id;
+       }
+     }
+@@ -164,7 +186,23 @@ export default class DeckRenderer {
+         renderBuffers.push(
+           this.device.createFramebuffer({
+             id: `deck-renderbuffer-${i}`,
+-            colorAttachments: [texture]
++            colorAttachments: [texture],
++            // PATCH(scene-depth): index 0 is the resolved scene buffer handed to post-process
++            // effects as `inputBuffer`. Attach a *sampleable* depth texture so effects can read
++            // scene depth via `inputBuffer.depthStencilAttachment`. Created explicitly with
++            // NEAREST filtering and no compare mode so a plain `sampler2D` reads it as `.r`
++            // (depth textures sampled with LINEAR are invalid in WebGL2). DEPTH_COMPONENT24
++            // matches the MSAA depth renderbuffer so _resolveMSAA can blit color+depth in one
++            // pass; the non-MSAA path depth-tests directly into it. Index 1 (swap) needs no depth.
++            depthStencilAttachment:
++              i === 0
++                ? this.device.createTexture({
++                    format: 'depth24plus',
++                    sampler: {minFilter: 'nearest', magFilter: 'nearest'},
++                    width,
++                    height
++                  })
++                : undefined
+           })
+         );
+       });
+@@ -172,7 +210,100 @@ export default class DeckRenderer {
+     for (const buffer of renderBuffers) {
+       buffer.resize(size);
+     }
++    this._resizeMSAA(width, height); // PATCH(msaa-scene)
++  }
++
++  // PATCH(msaa-scene) ----------------------------------------------------------
++  // When a PostProcessEffect is active, deck renders the scene into the single-sample
++  // renderBuffers[0] texture (deck-renderer `outputBuffer` selection), losing the MSAA
++  // the default framebuffer gives flat-shaded layers (Path/Polygon/Line). These helpers
++  // render the scene into a multisampled renderbuffer instead and blit-resolve it into
++  // renderBuffers[0], so the existing effect input path is unchanged but anti-aliased.
++  //
++  // luma's WebGL backend exposes no multisampled framebuffers and no blit API, so we drop
++  // to the raw WebGL2 context (`device.gl`) and wrap our FBO handle via createFramebuffer
++  // so LayersPass binds it. WebGPU / Node devices (no `gl`) skip this and keep the
++  // original single-sample path.
++
++  /** (Re)create the multisampled color renderbuffer FBO, sized to the drawing buffer. */
++  private _resizeMSAA(width: number, height: number) {
++    const gl = (this.device as unknown as {gl?: WebGL2RenderingContext}).gl;
++    if (!gl || typeof gl.renderbufferStorageMultisample !== 'function') {
++      return;
++    }
++    if (this._msaaSize && this._msaaSize[0] === width && this._msaaSize[1] === height) {
++      return;
++    }
++    this._destroyMSAA();
++    const samples = Math.min(4, gl.getParameter(gl.MAX_SAMPLES) as number);
++    const fbo = gl.createFramebuffer()!;
++    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
++    const color = gl.createRenderbuffer()!;
++    gl.bindRenderbuffer(gl.RENDERBUFFER, color);
++    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, width, height);
++    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color);
++    // Depth attachment so the scene capture depth-tests identically to the default canvas
++    // framebuffer (which has depth). Without it, depthWriteEnabled/depthCompare on layers
++    // become no-ops while a post-process effect is active, flipping the z-order of
++    // equal-depth overlapping geometry (e.g. billboarded icons). Must match `samples`.
++    const depth = gl.createRenderbuffer()!;
++    gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
++    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, width, height);
++    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
++    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
++    this._msaaGL = {fbo, color, depth};
++    this._msaaSize = [width, height];
++    // `handle` makes luma skip texture auto-creation and just bind our FBO.
++    this._msaaFramebuffer = this.device.createFramebuffer({
++      id: 'deck-msaa-scene',
++      handle: fbo,
++      width,
++      height
++    });
++  }
++
++  /** Blit-resolve the multisampled scene into the sampleable renderBuffers[0] texture. */
++  private _resolveMSAA() {
++    const gl = (this.device as unknown as {gl: WebGL2RenderingContext}).gl;
++    const [width, height] = this._msaaSize!;
++    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._msaaGL!.fbo);
++    gl.bindFramebuffer(
++      gl.DRAW_FRAMEBUFFER,
++      (this.renderBuffers[0] as unknown as {handle: WebGLFramebuffer}).handle
++    );
++    // PATCH(scene-depth): resolve color + depth in a single blit so renderBuffers[0] carries
++    // readable scene depth (sampled via its depthStencilAttachment). NEAREST is mandatory once
++    // the mask includes DEPTH_BUFFER_BIT, and both sides use DEPTH_COMPONENT24 so formats match.
++    gl.blitFramebuffer(
++      0,
++      0,
++      width,
++      height,
++      0,
++      0,
++      width,
++      height,
++      gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT,
++      gl.NEAREST
++    );
++    // Restore the default binding so luma's state tracker rebinds correctly next pass.
++    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
++  }
++
++  private _destroyMSAA() {
++    if (!this._msaaGL) {
++      return;
++    }
++    const gl = (this.device as unknown as {gl: WebGL2RenderingContext}).gl;
++    this._msaaFramebuffer?.destroy();
++    gl.deleteFramebuffer(this._msaaGL.fbo);
++    gl.deleteRenderbuffer(this._msaaGL.color);
++    gl.deleteRenderbuffer(this._msaaGL.depth);
++    this._msaaGL = null;
++    this._msaaFramebuffer = null;
++    this._msaaSize = null;
+   }
++  // END PATCH(msaa-scene) ------------------------------------------------------
+ 
+   private _postRender(effects: Effect[], opts: LayersPassRenderOptions) {
+     const {renderBuffers} = this;
+@@ -182,7 +313,10 @@ export default class DeckRenderer {
+       swapBuffer: renderBuffers[1]
+     };
+     for (const effect of effects) {
+-      if (effect.postRender) {
++      // PATCH(post-process-active): skip inactive post-process effects entirely — otherwise
++      // postRender runs with an undefined inputBuffer (renderBuffers are never sized when no
++      // active post-process effect set lastPostProcessEffect in _preRender).
++      if (effect.postRender && effect.isActive !== false) {
+         // If not the last post processing effect, unset the target so that
+         // it only renders between the swap buffers
+         params.target = effect.id === this.lastPostProcessEffect ? opts.target : undefined;
+diff --git a/node_modules/@deck.gl/core/src/lib/effect.ts b/node_modules/@deck.gl/core/src/lib/effect.ts
+index c6e7164..7e22731 100644
+--- a/node_modules/@deck.gl/core/src/lib/effect.ts
++++ b/node_modules/@deck.gl/core/src/lib/effect.ts
+@@ -25,6 +25,11 @@ export interface Effect {
+   useInPicking?: boolean;
+   /** Effects with smaller value gets executed first. If not provided, will get executed in the order added. */
+   order?: number;
++  /** PATCH(post-process-active): when explicitly `false`, the renderer skips this effect's
++   * post-process pass — and the MSAA scene capture that any post-process effect would
++   * otherwise trigger. Lets a `PostProcessEffect` stay registered but cost nothing on frames
++   * where it has no work (e.g. nothing selected to outline). Defaults to active. */
++  isActive?: boolean;
+ 
+   // / Render methods
+   /** Called before layers are rendered to screen */
+diff --git a/node_modules/@deck.gl/core/src/utils/tesselator.ts b/node_modules/@deck.gl/core/src/utils/tesselator.ts
+index 4b7b1ea..a23242a 100644
+--- a/node_modules/@deck.gl/core/src/utils/tesselator.ts
++++ b/node_modules/@deck.gl/core/src/utils/tesselator.ts
+@@ -208,6 +208,15 @@ export default abstract class Tesselator<GeometryT, NormalizedGeometryT, ExtraOp
+         startRow,
+         endRow
+       );
++
++      let length: number | undefined;
++      if (Array.isArray(data)) length = data.length;
++      else if (data instanceof Set || data instanceof Map) length = data.size;
++      if (length !== undefined) {
++        vertexStarts.length = length + 1;
++        indexStarts.length = vertexStarts.length;
++      }
++
+       // count instances
+       instanceCount = vertexStarts[vertexStarts.length - 1];
+     } else {

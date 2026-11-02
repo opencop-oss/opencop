@@ -1,0 +1,1543 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+name: opencop-demo
+
+x-app-environment: &app-environment
+  SPRING_PROFILES_ACTIVE: docker
+  cloud.blob.endpoint: ${CLOUD_BLOB_ENDPOINT:-http://azurite:10000/devstoreaccount1}
+  cloud.blob.public-endpoint: ${CLOUD_BLOB_PUBLIC_ENDPOINT:-http://localhost:10000/devstoreaccount1}
+  cloud.blob.account-name: ${CLOUD_BLOB_ACCOUNT_NAME:-devstoreaccount1}
+  cloud.blob.account-key: ${CLOUD_BLOB_ACCOUNT_KEY:-Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==}
+  cloud.blob.container-name: ${CLOUD_BLOB_CONTAINER:-opencop-common}
+  opencop.cloud.provider: azure
+  idp.issuer: ${IDP_ISSUER:-http://localhost/auth/realms/master}
+  idp.userIdClaim: sub
+  POSTGRES_USER: ${POSTGRES_USER:-admin}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mypassword}
+  opencop.db.username: ${POSTGRES_USER:-admin}
+  opencop.db.password: ${POSTGRES_PASSWORD:-mypassword}
+  opencop.db.url: ${POSTGRES_URL:-jdbc:postgresql://postgres:5432/opencop-db}
+  opencop.db.driver: org.postgresql.Driver
+  redis.host: ${REDIS_HOST:-redis}
+  redis.port: ${REDIS_PORT:-6379}
+  redis.password: ${REDIS_PASSWORD:-}
+  redis.ssl: ${REDIS_SSL:-false}
+  DLT_INDEXING_ENABLED: "true"
+  DLT_INDEXING_AUTO_OFFSET_RESET: earliest
+  opencop.secrets.vault.provider: kv
+  opencop.secrets.vault.addr: http://vault:8200
+  opencop.secrets.vault.mount: kv
+  opencop.secrets.vault.token-file: /run/secrets/.vault-token
+  JAVA_TOOL_OPTIONS: ""
+
+x-broker-environment: &broker-environment
+  MESSAGING_BROKER_PROVIDER: ${MESSAGING_BROKER_PROVIDER:-local}
+  opencop.messaging-broker.properties.bootstrap-url: ${MESSAGING_BROKER_BOOTSTRAP_URL:-kafka:29092}
+  opencop.messaging-broker.properties.sasl-bootstrap-url: ${MESSAGING_BROKER_SASL_BOOTSTRAP_URL:-127.0.0.1:9094}
+  opencop.messaging-broker.properties.connection-string: ${MESSAGING_BROKER_CONNECTION_STRING:-}
+  opencop.messaging-broker.properties.tenant-id: ${MESSAGING_BROKER_TENANT_ID:-}
+  opencop.messaging-broker.properties.client-id: ${MESSAGING_BROKER_CLIENT_ID:-}
+  opencop.messaging-broker.properties.client-secret: ${MESSAGING_BROKER_CLIENT_SECRET:-}
+  opencop.messaging-broker.properties.subscription-id: ${MESSAGING_BROKER_SUBSCRIPTION_ID:-}
+  opencop.messaging-broker.properties.resource-group: ${MESSAGING_BROKER_RESOURCE_GROUP:-}
+  opencop.messaging-broker.properties.namespace: ${MESSAGING_BROKER_NAMESPACE:-}
+
+x-app-healthcheck: &app-healthcheck
+  test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+  interval: 10s
+  timeout: 5s
+  retries: 10
+  start_period: 20s
+
+services:
+  # Application builds consume this service as their shared Java base-image
+  # context. It stays healthy after the build because disabling it makes that
+  # service-backed context unavailable and an exit-0 service fails `up --wait`.
+  opencop-base:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.opencop-base
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["exec tail -f /dev/null"]
+    restart: unless-stopped
+    networks: [opencop-demo]
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+  opencop-core:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        opencop_base: service:opencop-base
+      args:
+        OPENCOP_BASE_IMAGE: opencop_base
+        MODULE_DIR: core
+    user: root
+    restart: unless-stopped
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-topic-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      azurite:
+        condition: service_started
+      vault-seed:
+        condition: service_completed_successfully
+    environment:
+      <<: [*app-environment, *broker-environment]
+      opencop.domain: http://localhost
+      opencop.dev.mode: "true"
+      idp.admin.client-id: ${IDP_CLIENT_ID:-CORE-API}
+      idp.admin.client-secret: ${IDP_CLIENT_SECRET:-opencop-local-dev-idp-client-secret}
+      idp.base-url: ${IDP_BASE_URL:-http://localhost/auth}
+      idp.authorization-uri: ${IDP_AUTHORIZATION_URI:-http://localhost/auth/realms/master/protocol/openid-connect/auth}
+      idp.token-uri: ${IDP_TOKEN_URI:-http://keycloak:8070/auth/realms/master/protocol/openid-connect/token}
+      idp.jwk-set-uri: ${IDP_JWK_SET_URI:-http://keycloak:8070/auth/realms/master/protocol/openid-connect/certs}
+      idp.user-info-uri: ${IDP_USER_INFO_URI:-http://keycloak:8070/auth/realms/master/protocol/openid-connect/userinfo}
+      idp.audience: ${IDP_AUDIENCE:-}
+      opencop.admin.default: ${OPENCOP_DEFAULT_ADMIN:-admin@example.com}
+      EXPECTED_CONNECT_INSTANCES: ${CONNECT_REPLICAS:-1}
+      MEDIAMTX_HLS_PUBLIC_BASE_URL: http://localhost/streams
+      opencop.mediamtx.enabled: ${MEDIAMTX_ENABLED:-true}
+      opencop.mediamtx.api.base-url: http://mediamtx:9997
+      opencop.mediamtx.api.username: ${MEDIAMTX_API_USERNAME:-opencop-core-local}
+      opencop.mediamtx.api.password: ${MEDIAMTX_API_PASSWORD:-opencop-local-mediamtx-api}
+      opencop.mediamtx.hls.public-base-url: http://localhost/streams
+      opencop.scim.bearer-token: ${OPENCOP_SCIM_BEARER_TOKEN:-opencop-local-dev-scim-bearer-token}
+      springdoc.api-docs.enabled: "true"
+      springdoc.swagger-ui.enabled: "true"
+      springdoc.swagger-ui.csrf.enabled: "true"
+      springdoc.swagger-ui.csrf.use-session-storage: "true"
+      springdoc.swagger-ui.csrf.session-storage-key: XSRF-TOKEN
+      springdoc.swagger-ui.csrf.header-name: X-XSRF-TOKEN
+    configs:
+      - source: bao-token
+        target: /run/secrets/.vault-token
+    networks: [opencop-demo]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.core.rule=Host(`localhost`) && PathPrefix(`/api`)
+      - traefik.http.routers.core.entrypoints=web
+      - traefik.http.routers.core.middlewares=strip-api,max-body@file
+      - traefik.http.middlewares.strip-api.stripprefix.prefixes=/api
+      - traefik.http.services.core.loadbalancer.server.port=8080
+    healthcheck: *app-healthcheck
+
+  opencop-connect:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        opencop_base: service:opencop-base
+      args:
+        OPENCOP_BASE_IMAGE: opencop_base
+        MODULE_DIR: connect
+        RUNTIME_STAGE: runtime-glibc
+        JAVA_NATIVE_ACCESS_OPTIONS: --enable-native-access=ALL-UNNAMED
+    user: root
+    restart: unless-stopped
+    depends_on:
+      opencop-core:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      azurite:
+        condition: service_started
+      vault-seed:
+        condition: service_completed_successfully
+    environment:
+      <<: [*app-environment, *broker-environment]
+      OIDC_ISSUER: ${IDP_ISSUER:-http://localhost/auth/realms/master}
+      ui.enabled: "true"
+    configs:
+      - source: bao-token
+        target: /run/secrets/.vault-token
+    networks: [opencop-demo]
+    healthcheck: *app-healthcheck
+
+  opencop-websocket:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        opencop_base: service:opencop-base
+      args:
+        OPENCOP_BASE_IMAGE: opencop_base
+        MODULE_DIR: websocket
+    user: root
+    restart: unless-stopped
+    depends_on:
+      opencop-core:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      azurite:
+        condition: service_started
+      vault-seed:
+        condition: service_completed_successfully
+    environment:
+      <<: *app-environment
+      OIDC_ISSUER: ${IDP_ISSUER:-http://localhost/auth/realms/master}
+      opencop.dev.mode: "true"
+      websocket.allowed-origins: http://localhost
+    networks: [opencop-demo]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.websocket.rule=Host(`localhost`) && PathPrefix(`/ws`)
+      - traefik.http.routers.websocket.entrypoints=web
+      - traefik.http.services.websocket.loadbalancer.server.port=8080
+    healthcheck: *app-healthcheck
+
+  opencop-processor:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        opencop_base: service:opencop-base
+      args:
+        OPENCOP_BASE_IMAGE: opencop_base
+        MODULE_DIR: processor
+    user: root
+    restart: unless-stopped
+    depends_on:
+      opencop-core:
+        condition: service_healthy
+      opencop-websocket:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-topic-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      azurite:
+        condition: service_started
+      vault-seed:
+        condition: service_completed_successfully
+    environment:
+      <<: [*app-environment, *broker-environment]
+      OIDC_ISSUER: ${IDP_ISSUER:-http://localhost/auth/realms/master}
+    networks: [opencop-demo]
+    healthcheck: *app-healthcheck
+
+  opencop-web:
+    build:
+      context: ../frontend
+      dockerfile: docker/Dockerfile
+      args:
+        BUILD_MODE: default
+    restart: unless-stopped
+    networks: [opencop-demo]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=Host(`localhost`) && !PathPrefix(`/api`) && !PathPrefix(`/ws`) && !PathPrefix(`/auth`) && !PathPrefix(`/streams`)
+      - traefik.http.routers.web.entrypoints=web
+      - traefik.http.routers.web.priority=1
+      - traefik.http.services.web.loadbalancer.server.port=80
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  mediamtx:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM bluenviron/mediamtx:1.18.2 AS mediamtx
+        FROM alpine:3.20
+        RUN apk add --no-cache ca-certificates ffmpeg
+        COPY --from=mediamtx /mediamtx /mediamtx
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        install -m 0755 \
+          /run/mediamtx/opencop-mediamtx-ffmpeg-adapter.sh \
+          /usr/local/bin/opencop-mediamtx-ffmpeg-adapter
+        exec /mediamtx /run/mediamtx/mediamtx.yml
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8554:8554"
+    configs:
+      - source: mediamtx-config
+        target: /run/mediamtx/mediamtx.yml
+      - source: mediamtx-adapter
+        target: /run/mediamtx/opencop-mediamtx-ffmpeg-adapter.sh
+    networks: [opencop-demo]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mediamtx-streams.rule=Host(`localhost`) && PathPrefix(`/streams`)
+      - traefik.http.routers.mediamtx-streams.entrypoints=web
+      - traefik.http.routers.mediamtx-streams.service=mediamtx-hls
+      - traefik.http.services.mediamtx-hls.loadbalancer.server.port=8888
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8888 && nc -z 127.0.0.1 9997"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  demo-user-init:
+    image: python:3.14.5-alpine3.23
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      opencop-core:
+        condition: service_healthy
+    environment:
+      IDP_CLIENT_ID: ${IDP_CLIENT_ID:-CORE-API}
+      IDP_CLIENT_SECRET: ${IDP_CLIENT_SECRET:-opencop-local-dev-idp-client-secret}
+      OPENCOP_DEFAULT_ADMIN: ${OPENCOP_DEFAULT_ADMIN:-admin@example.com}
+      OPENCOP_DEMO_USER: ${OPENCOP_DEMO_USER:-demo}
+      OPENCOP_DEMO_PASSWORD: ${OPENCOP_DEMO_PASSWORD:-opencop-demo}
+      OPENCOP_SCIM_BEARER_TOKEN: ${OPENCOP_SCIM_BEARER_TOKEN:-opencop-local-dev-scim-bearer-token}
+    configs:
+      - source: demo-user-init-script
+        target: /demo-user-init.py
+    entrypoint: ["python", "/demo-user-init.py"]
+    restart: "no"
+    networks: [opencop-demo]
+
+  # Seeds the default basemap and demo banners once per database, after
+  # Core's migrations. The marker row lives in that database, so admin
+  # edits survive restarts and `docker compose down -v` seeds again.
+  demo-content-init:
+    image: postgres:17-bookworm
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opencop-core:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGDATABASE: opencop-db
+      PGUSER: ${POSTGRES_USER:-admin}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-mypassword}
+    configs:
+      - source: demo-content-seed
+        target: /seed.sql
+    entrypoint: ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-f", "/seed.sql"]
+    restart: "no"
+    networks: [opencop-demo]
+
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    # Do not expose the stack until the promised demo login and the default
+    # map content exist. These edges also mark demo-user-init and
+    # demo-content-init as intentional successful one-shots.
+    depends_on:
+      demo-user-init:
+        condition: service_completed_successfully
+      demo-content-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    configs:
+      - source: traefik-static
+        target: /etc/traefik/traefik.yaml
+      - source: traefik-dynamic
+        target: /etc/traefik/dynamic.yaml
+    command: ["--configFile=/etc/traefik/traefik.yaml"]
+    networks: [opencop-demo]
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  postgres:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM postgres:17-bookworm
+        RUN apt-get update && \
+            apt-get install -y --no-install-recommends \
+              postgresql-17-postgis-3 \
+              postgresql-17-postgis-3-scripts && \
+            rm -rf /var/lib/apt/lists/*
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: opencop-db
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mypassword}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    configs:
+      - source: postgres-keycloak-init
+        target: /docker-entrypoint-initdb.d/99-keycloak.sql
+    networks: [opencop-demo]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U $$POSTGRES_USER -d opencop-db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  kafka:
+    image: apache/kafka:4.3.2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT_INTERNAL://0.0.0.0:29092,SASL_EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_INTERNAL://kafka:29092,SASL_EXTERNAL://127.0.0.1:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT_INTERNAL:PLAINTEXT,SASL_EXTERNAL:SASL_PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-256
+      KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      KAFKA_SUPER_USERS: User:ANONYMOUS
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    configs:
+      - source: kafka-server-jaas
+        target: /etc/kafka/kafka_server_jaas.conf
+    networks: [opencop-demo]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 29092"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+      start_period: 20s
+
+  kafka-topic-init:
+    image: apache/kafka:4.3.2
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        echo "[kafka-topic-init] waiting for Kafka Admin API"
+        attempts=$${KAFKA_ADMIN_READY_ATTEMPTS:-60}
+        delay=$${KAFKA_ADMIN_READY_DELAY_SECONDS:-2}
+        attempt=1
+        until "$${KAFKA_BIN:-/opt/kafka/bin}/kafka-topics.sh" \
+          --bootstrap-server kafka:29092 --list >/dev/null 2>&1; do
+          if [ "$$attempt" -ge "$$attempts" ]; then
+            echo "[kafka-topic-init] Kafka Admin API unavailable after $$attempt attempts" >&2
+            exit 1
+          fi
+          echo "[kafka-topic-init] Admin API unavailable ($$attempt/$$attempts), retrying in $${delay}s" >&2
+          attempt=$$((attempt + 1))
+          sleep "$$delay"
+        done
+        echo "[kafka-topic-init] Kafka Admin API ready"
+
+        "$${KAFKA_BIN:-/opt/kafka/bin}/kafka-topics.sh" --bootstrap-server kafka:29092 \
+          --create --if-not-exists \
+          --topic opencop.byod.sources \
+          --partitions 3 \
+          --replication-factor 1 \
+          --config cleanup.policy=compact
+        "$${KAFKA_BIN:-/opt/kafka/bin}/kafka-configs.sh" --bootstrap-server kafka:29092 \
+          --alter \
+          --entity-type topics \
+          --entity-name opencop.byod.sources \
+          --add-config cleanup.policy=compact
+    restart: "no"
+    networks: [opencop-demo]
+
+  redis:
+    image: redis:7.4.9
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks: [opencop-demo]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  azurite:
+    # TODO(security): adopt an upstream image with the CVE-2026-111497 fix.
+    # Verify the embedded Node runtime before updating this pin.
+    # Advisory: https://nodejs.org/en/blog/vulnerability/october-2026-security-releases
+    image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:10000:10000"
+    command: azurite-blob --blobHost 0.0.0.0 --location /data --skipApiVersionCheck
+    volumes:
+      - azurite-data:/data
+    networks: [opencop-demo]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 10000"]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+
+  vault:
+    image: openbao/openbao:2.6.0
+    restart: unless-stopped
+    command: ["bao", "server", "-config=/openbao/config/demo.hcl"]
+    volumes:
+      - openbao-data:/openbao/file
+    configs:
+      - source: openbao-config
+        target: /openbao/config/demo.hcl
+    environment:
+      BAO_ADDR: http://0.0.0.0:8200
+      VAULT_API_ADDR: http://vault:8200
+    networks: [opencop-demo]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8200/v1/sys/health >/dev/null 2>&1"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+      start_period: 2s
+
+  vault-seed:
+    image: openbao/openbao:2.6.0
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mypassword}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      CLOUD_BLOB_ACCOUNT_KEY: ${CLOUD_BLOB_ACCOUNT_KEY:-Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==}
+      IDP_CLIENT_SECRET: ${IDP_CLIENT_SECRET:-opencop-local-dev-idp-client-secret}
+      OPENCOP_SCIM_BEARER_TOKEN: ${OPENCOP_SCIM_BEARER_TOKEN:-opencop-local-dev-scim-bearer-token}
+      MESSAGING_BROKER_CONNECTION_STRING: ${MESSAGING_BROKER_CONNECTION_STRING:-}
+      MESSAGING_BROKER_CLIENT_SECRET: ${MESSAGING_BROKER_CLIENT_SECRET:-}
+    configs:
+      - source: vault-seed-script
+        target: /seed.sh
+    entrypoint: ["/bin/sh", "/seed.sh"]
+    restart: "no"
+    networks: [opencop-demo]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.2
+    command: ["start-dev"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: ${KEYCLOAK_DB_URL:-jdbc:postgresql://postgres:5432/keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME:-keycloak_user}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_pass}
+      KC_HOSTNAME: http://localhost/auth
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_PORT: 8070
+      KC_HTTP_RELATIVE_PATH: /auth
+    networks: [opencop-demo]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.keycloak.rule=PathPrefix(`/auth`)
+      - traefik.http.routers.keycloak.entrypoints=web
+      - traefik.http.routers.keycloak.service=keycloak
+      - traefik.http.services.keycloak.loadbalancer.server.port=8070
+    healthcheck:
+      test: ["CMD-SHELL", "{ printf 'GET / HTTP/1.0\\r\\n\\r\\n' >&0; head -1 | grep -q 'HTTP/1.0 302'; } 0<>/dev/tcp/localhost/8070"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10m
+
+networks:
+  opencop-demo:
+    name: ${COMPOSE_PROJECT_NAME:-opencop-demo}
+
+volumes:
+  postgres-data:
+  kafka-data:
+  redis-data:
+  azurite-data:
+  openbao-data:
+
+configs:
+  bao-token:
+    content: opencop-demo-root
+
+  openbao-config:
+    content: |
+      # The static seal key is a published, demo-only value that protects
+      # nothing. OpenBao reads a 32-character key as raw key bytes, so it must
+      # stay exactly 32 bytes with no trailing whitespace. Existing openbao-data
+      # can only be unsealed with the key that wrote it: changing the key needs
+      # a full reset with `docker compose down -v`.
+      ui            = false
+      api_addr      = "http://127.0.0.1:8200"
+      cluster_addr  = "http://127.0.0.1:8201"
+      # Raft replaces the file backend, which OpenBao 2.6 deprecates. Raft
+      # needs a cluster address; the loopback one keeps this single node's
+      # stored peer entry valid when the container is recreated. Like the key,
+      # node_id must not change without `docker compose down -v`. The path is
+      # the volume directory the image already owns, so it needs no chown.
+      storage "raft" {
+        path    = "/openbao/file"
+        node_id = "opencop-demo"
+      }
+      listener "tcp" { address = "0.0.0.0:8200"  tls_disable = true }
+      seal "static" {
+        current_key_id = "opencop-demo-only"
+        current_key    = "opencop-demo-insecure-static-key"
+      }
+      # Runs once, on the first start against an empty openbao-data volume.
+      # Core and Connect read this token id from the bao-token config.
+      # Requests run in order: once the token works, the kv mount exists.
+      initialize "demo" {
+        request "enable-kv" {
+          operation = "update"
+          path      = "sys/mounts/kv"
+          data = { type = "kv", options = { version = "2" } }
+        }
+        request "demo-token" {
+          operation = "update"
+          path      = "auth/token/create"
+          data = { id = "opencop-demo-root", policies = ["root"], no_parent = true, display_name = "opencop-demo" }
+        }
+      }
+
+  kafka-server-jaas:
+    content: |
+      KafkaServer {
+          org.apache.kafka.common.security.scram.ScramLoginModule required;
+      };
+
+  traefik-static:
+    content: |
+      global:
+        checkNewVersion: false
+        sendAnonymousUsage: false
+      entryPoints:
+        web:
+          address: ":80"
+          forwardedHeaders:
+            insecure: true
+      providers:
+        docker:
+          watch: true
+          exposedByDefault: false
+          endpoint: "unix:///var/run/docker.sock"
+          network: ${COMPOSE_PROJECT_NAME:-opencop-demo}
+          constraints: 'Label(`com.docker.compose.project`, `${COMPOSE_PROJECT_NAME:-opencop-demo}`)'
+        file:
+          filename: /etc/traefik/dynamic.yaml
+      ping: {}
+      log:
+        format: json
+        level: INFO
+
+  traefik-dynamic:
+    content: |
+      http:
+        middlewares:
+          max-body:
+            buffering:
+              maxRequestBodyBytes: 52428800
+
+  vault-seed-script:
+    content: |
+      #!/bin/sh
+      set -eu
+
+      export VAULT_ADDR=http://vault:8200
+      export VAULT_TOKEN=opencop-demo-root
+
+      vault_retry() {
+        operation=$$1
+        shift
+        tries=40
+        attempt=1
+        while ! "$$@"; do
+          if [ "$$attempt" -ge "$$tries" ]; then
+            echo "[vault-seed] gave up after $$attempt attempts: $$operation" >&2
+            return 1
+          fi
+          echo "[vault-seed] transient failure ($$attempt/$$tries), retrying in 2s: $$operation" >&2
+          attempt=$$((attempt + 1))
+          sleep 2
+        done
+      }
+
+      # OpenBao self-initializes on first start and can report healthy just
+      # before the fixed token exists, so readiness means the token works.
+      # The lookup output names the token, so it never reaches the logs.
+      vault_ready() {
+        vault status >/dev/null 2>&1 &&
+          vault token lookup >/dev/null 2>&1
+      }
+
+      echo "[vault-seed] waiting for OpenBao"
+      vault_retry "wait for OpenBao readiness" vault_ready
+
+      echo "[vault-seed] checking kv-v2 mount"
+      if mount_json=$$(vault read -format=json sys/mounts/kv 2>/dev/null); then
+        compact_mount=$$(printf '%s' "$$mount_json" | tr -d '[:space:]')
+        if ! printf '%s' "$$compact_mount" | grep -q '"type":"kv"' || \
+          ! printf '%s' "$$compact_mount" | grep -q '"options":{"version":"2"}'; then
+          echo "[vault-seed] kv exists but is not a kv-v2 mount" >&2
+          exit 1
+        fi
+        echo "[vault-seed] kv-v2 already enabled"
+      else
+        echo "[vault-seed] enabling kv-v2"
+        vault secrets enable -path=kv kv-v2
+      fi
+
+      set -- vault kv put kv/opencop/core \
+        "redis_password=$${REDIS_PASSWORD}" \
+        "cloud_blob_account_key=$${CLOUD_BLOB_ACCOUNT_KEY}" \
+        "postgres_password=$${POSTGRES_PASSWORD}" \
+        "idp_client_secret=$${IDP_CLIENT_SECRET}" \
+        "opencop_scim_bearer_token=$${OPENCOP_SCIM_BEARER_TOKEN}"
+      if [ -n "$${MESSAGING_BROKER_CONNECTION_STRING}" ]; then
+        set -- "$$@" "messaging_broker_connection_string=$${MESSAGING_BROKER_CONNECTION_STRING}"
+      fi
+      if [ -n "$${MESSAGING_BROKER_CLIENT_SECRET}" ]; then
+        set -- "$$@" "messaging_broker_client_secret=$${MESSAGING_BROKER_CLIENT_SECRET}"
+      fi
+      vault_retry "write core secrets" "$$@"
+
+      vault_retry "write Processor secrets" vault kv put kv/opencop/processor \
+        "redis_password=$${REDIS_PASSWORD}" \
+        "cloud_blob_account_key=$${CLOUD_BLOB_ACCOUNT_KEY}" \
+        "postgres_password=$${POSTGRES_PASSWORD}"
+
+      vault_retry "write Connect secrets" vault kv put kv/opencop/connect \
+        "redis_password=$${REDIS_PASSWORD}" \
+        "cloud_blob_account_key=$${CLOUD_BLOB_ACCOUNT_KEY}" \
+        "postgres_password=$${POSTGRES_PASSWORD}"
+
+      vault_retry "write WebSocket secrets" vault kv put kv/opencop/websocket \
+        "redis_password=$${REDIS_PASSWORD}"
+
+      echo "[vault-seed] done"
+
+  demo-content-seed:
+    content: |
+      SET client_encoding = 'UTF8';
+      BEGIN;
+      -- Flyway does not manage this schema. The marker lives in the same database
+      -- as the content it describes, so admin edits and deletions stay put across
+      -- restarts and `docker compose down -v` seeds again.
+      CREATE SCHEMA IF NOT EXISTS demo_seed;
+      CREATE TABLE IF NOT EXISTS demo_seed.applied (
+        seed varchar(64) PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT now()
+      );
+      LOCK TABLE demo_seed.applied IN EXCLUSIVE MODE;
+      DO $$seed$$
+      DECLARE
+        notice_id uuid;
+        credit_id uuid;
+      BEGIN
+        IF EXISTS (SELECT 1 FROM demo_seed.applied WHERE seed = 'demo-content-v1') THEN
+          RAISE NOTICE '[demo-content-init] demo-content-v1 already applied; leaving the map and banners unchanged';
+          RETURN;
+        END IF;
+
+        -- Without a GLOBAL scope a non-admin user would see a blank map.
+        INSERT INTO public.map_tile (id, is_primary, name, description, url, kind, config, token_ref, enabled, access_scope)
+        VALUES (
+          gen_random_uuid(),
+          NOT EXISTS (SELECT 1 FROM public.map_tile WHERE is_primary),
+          'OpenFreeMap Dark',
+          'Demo basemap from the public OpenFreeMap service; needs internet access.',
+          'https://tiles.openfreemap.org/styles/dark',
+          'VECTOR',
+          '{"type":"BASEMAP","extension":null,"tile":{"kind":"VECTOR","tileSize":null,"minZoom":null,"maxZoom":null}}',
+          NULL,
+          true,
+          'GLOBAL'
+        )
+        ON CONFLICT (name) DO NOTHING;
+
+        -- The web app shows a banner only between starts_at and ends_at, and a null
+        -- ends_at never displays. This end date is the admin form's "no expiry".
+        -- Neither banner is dismissible: the notice and the map credit must stay
+        -- visible. An administrator can still edit or delete them.
+        INSERT INTO public.banner (name, kind, enabled, starts_at, ends_at, color, text_color, format, dismissible, link_url, priority)
+        VALUES ('Demo notice', 'HEADER', true, now(), timestamptz '9999-12-31 23:59:59.999+00', '#7a4f00', '#ffffff', 'PLAIN', false, NULL, 0)
+        RETURNING id INTO notice_id;
+        INSERT INTO public.banner_translation (banner_id, locale, content)
+        VALUES (notice_id, 'en', 'OpenCOP evaluation demo: fixed credentials and demo-only keys. Not for production or sensitive data.');
+
+        -- The web map turns off MapLibre's attribution control, so the tile
+        -- source's own credits never show; this footer is the on-map credit.
+        -- Keep it the only footer banner: several rotate.
+        INSERT INTO public.banner (name, kind, enabled, starts_at, ends_at, color, text_color, format, dismissible, link_url, priority)
+        VALUES ('Map data credit', 'FOOTER', true, now(), timestamptz '9999-12-31 23:59:59.999+00', '#1f2530', '#d0d4dc', 'PLAIN', false, 'https://www.openstreetmap.org/copyright', 0)
+        RETURNING id INTO credit_id;
+        INSERT INTO public.banner_translation (banner_id, locale, content)
+        VALUES (credit_id, 'en', 'Map: OpenFreeMap · © OpenMapTiles.org · Data © OpenStreetMap contributors');
+
+        INSERT INTO demo_seed.applied (seed) VALUES ('demo-content-v1');
+        RAISE NOTICE '[demo-content-init] demo-content-v1 applied: OpenFreeMap Dark basemap and demo banners';
+      END
+      $$seed$$;
+      COMMIT;
+
+  postgres-keycloak-init:
+    content: |
+      -- MAKE SURE IT STAYS LAST
+      CREATE DATABASE keycloak;
+      CREATE USER keycloak_user WITH PASSWORD 'keycloak_pass';
+      ALTER DATABASE keycloak OWNER TO keycloak_user;
+      GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak_user;
+      -- Ensure schema ownership
+      \connect keycloak
+      ALTER SCHEMA public OWNER TO keycloak_user;
+
+  mediamtx-config:
+    content: |
+      api: yes
+      apiAddress: :9997
+      rtsp: yes
+      rtspAddress: :8554
+      hls: yes
+      hlsAddress: :8888
+      hlsAllowOrigins: ['*']
+      hlsAlwaysRemux: false
+      hlsVariant: mpegts
+      hlsSegmentCount: 7
+      hlsSegmentDuration: 1s
+      authMethod: internal
+      authInternalUsers:
+      - user: ${MEDIAMTX_API_USERNAME:-opencop-core-local}
+        pass: ${MEDIAMTX_API_PASSWORD:-opencop-local-mediamtx-api}
+        ips: []
+        permissions:
+        - action: api
+      - user: any
+        pass:
+        ips: []
+        permissions:
+        - action: read
+          path: '~^streams/att_[0-9a-fA-F-]+$'
+        - action: playback
+          path: '~^streams/att_[0-9a-fA-F-]+$'
+      - user: any
+        pass:
+        ips: ['127.0.0.1']
+        permissions:
+        - action: publish
+          path: '~^streams/att_[0-9a-fA-F-]+$'
+
+  mediamtx-adapter:
+    content: |
+      #!/bin/sh
+      set -eu
+
+      fail() {
+        printf '%s\n' "$$1" >&2
+        exit 1
+      }
+
+      if [ "$$#" -ne 1 ]; then
+        fail "Expected one encoded source URL argument"
+      fi
+
+      # MTX_PATH is supplied by MediaMTX and becomes the publish path below.
+      # Keep this adapter scoped to Core attachment stream paths: streams/att_{{UUID}}.
+      MTX_ATTACHMENT_PATH_RE='^streams/att_[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$$'
+      if ! printf '%s\n' "$${MTX_PATH:-}" | LC_ALL=C grep -Eq "$$MTX_ATTACHMENT_PATH_RE"; then
+        fail "Invalid MediaMTX adapter path; expected streams/att_{{UUID}}"
+      fi
+
+      SOURCE_URL="$$(printf '%s' "$$1" | base64 -d 2>/dev/null)" || fail "Invalid encoded source URL"
+
+      # The source URL is passed to ffmpeg as one argument and may appear in ffmpeg
+      # diagnostics. Keep it single-line/single-token so redaction and logs stay boring.
+      if printf '%s' "$$SOURCE_URL" | LC_ALL=C grep -q '[[:cntrl:][:space:]]'; then
+        fail "Invalid source URL characters"
+      fi
+
+      # This adapter pulls RTSP and SRT sources. Other source types need their own
+      # validation and logging policy before being accepted here.
+      case "$$SOURCE_URL" in
+        rtsp://* | rtsps://*)
+          SOURCE_KIND=RTSP
+          ;;
+        srt://*)
+          SOURCE_KIND=SRT
+          ;;
+        *)
+          fail "Invalid source URL scheme; expected rtsp, rtsps or srt"
+          ;;
+      esac
+
+      AUTHORITY="$${SOURCE_URL#*://}"
+      AUTHORITY="$${AUTHORITY%%/*}"
+      AUTHORITY="$${AUTHORITY%%\?*}"
+      # Camera credentials are commonly embedded as userinfo or query tokens.
+      # Future credential-bearing URL support should revisit argv/process-list exposure
+      # and ffmpeg/MediaMTX diagnostic redaction before relaxing these checks.
+      case "$$AUTHORITY" in
+        *@*)
+          fail "$$SOURCE_KIND URL credentials are not supported"
+          ;;
+      esac
+
+      case "$$SOURCE_URL" in
+        *\#*)
+          fail "$$SOURCE_KIND URL fragments are not supported"
+          ;;
+      esac
+
+      if [ "$$SOURCE_KIND" = "RTSP" ]; then
+        case "$$SOURCE_URL" in
+          *\?*)
+            fail "RTSP URL query strings and fragments are not supported"
+            ;;
+        esac
+        # RTSP-only demuxer option; ffmpeg rejects it on other inputs.
+        set -- -rtsp_transport tcp
+      else
+        # SRT needs a host and port; ffmpeg would otherwise fall back to its listener
+        # defaults. A query is allowed only for streamid and latency: passphrase and
+        # pbkeylen are credentials, and mode=listener would make ffmpeg open a port
+        # instead of pulling. Values are never echoed back in error messages.
+        case "$$AUTHORITY" in
+          ?*:[0-9]*)
+            ;;
+          *)
+            fail "SRT URL needs a host and port"
+            ;;
+        esac
+        case "$${AUTHORITY##*:}" in
+          *[!0-9]*)
+            fail "SRT URL needs a numeric port"
+            ;;
+        esac
+        # 0 and anything above 65535 can't name a destination. Compare a copy with the leading zeros
+        # stripped (shell arithmetic would read 09000 as octal), and bound its length before any numeric
+        # test; the URL keeps its original spelling.
+        srt_port="$${AUTHORITY##*:}"
+        while [ "$${#srt_port}" -gt 1 ] && [ "$${srt_port#0}" != "$$srt_port" ]; do
+          srt_port="$${srt_port#0}"
+        done
+        if [ "$${#srt_port}" -gt 5 ] || [ "$$srt_port" -lt 1 ] || [ "$$srt_port" -gt 65535 ]; then
+          fail "SRT port must be between 1 and 65535"
+        fi
+        case "$$SOURCE_URL" in
+          *\?*)
+            srt_base="$${SOURCE_URL%%\?*}"
+            srt_query="$${SOURCE_URL#*\?}"
+            [ -n "$$srt_query" ] || fail "SRT URL query is empty"
+            case "$$srt_query" in
+              \&* | *\& | *\&\&*)
+                fail "SRT URL query has an empty parameter"
+                ;;
+            esac
+            srt_seen=""
+            srt_new_query=""
+            old_ifs="$$IFS"
+            IFS='&'
+            set -f
+            # shellcheck disable=SC2086
+            set -- $$srt_query
+            set +f
+            IFS="$$old_ifs"
+            for pair in "$$@"; do
+              srt_key="$${pair%%=*}"
+              srt_value="$${pair#*=}"
+              if [ "$$srt_key" = "$$pair" ] || [ -z "$$srt_value" ]; then
+                fail "SRT URL query parameters need a value"
+              fi
+              case "$$srt_key" in
+                streamid)
+                  case "$$srt_value" in
+                    *[!A-Za-z0-9._~-]*)
+                      fail "SRT streamid may only contain letters, digits and . _ ~ -"
+                      ;;
+                  esac
+                  [ "$${#srt_value}" -le 128 ] || fail "SRT streamid is too long"
+                  ;;
+                latency)
+                  case "$$srt_value" in
+                    *[!0-9]*)
+                      fail "SRT latency must be a number of milliseconds"
+                      ;;
+                  esac
+                  [ "$${#srt_value}" -le 6 ] || fail "SRT latency is too large"
+                  # Strip leading zeros so shell arithmetic doesn't read octal.
+                  while [ "$${#srt_value}" -gt 1 ] && [ "$${srt_value#0}" != "$$srt_value" ]; do
+                    srt_value="$${srt_value#0}"
+                  done
+                  # The URL speaks milliseconds (the SRT convention); ffmpeg's libsrt
+                  # option is in microseconds.
+                  srt_value="$$((srt_value * 1000))"
+                  ;;
+                *)
+                  fail "SRT URL query supports only streamid and latency"
+                  ;;
+              esac
+              case " $$srt_seen " in
+                *" $$srt_key "*)
+                  fail "SRT URL query repeats a parameter"
+                  ;;
+              esac
+              srt_seen="$$srt_seen $$srt_key"
+              srt_new_query="$${srt_new_query:+$$srt_new_query&}$$srt_key=$$srt_value"
+            done
+            # From here on SOURCE_URL is the exact URL ffmpeg sees, so log redaction
+            # matches what ffmpeg prints.
+            SOURCE_URL="$$srt_base?$$srt_new_query"
+            ;;
+        esac
+        set --
+      fi
+
+      tmpdir="$$(mktemp -d)"
+      fifo="$$tmpdir/ffmpeg.stderr"
+      mkfifo "$$fifo"
+      ffmpeg_pid=""
+      redactor_pid=""
+      stopped=0
+
+      cleanup() {
+        rm -rf "$$tmpdir"
+      }
+
+      forward_signal() {
+        stopped=1
+        sig="$$1"
+        if [ -n "$$ffmpeg_pid" ] && kill -0 "$$ffmpeg_pid" 2>/dev/null; then
+          kill "-$$sig" "$$ffmpeg_pid" 2>/dev/null || true
+        fi
+      }
+
+      trap cleanup EXIT
+      trap 'forward_signal TERM' TERM
+      trap 'forward_signal INT' INT
+      trap 'forward_signal HUP' HUP
+
+      # The URL goes in through the environment: awk -v would process backslash
+      # escapes in it, so a URL containing one would no longer match ffmpeg's output
+      # and would be logged unredacted.
+      REDACT_SOURCE="$$SOURCE_URL" awk -v kind="$$SOURCE_KIND" '
+      {
+        line = $$0
+        source = ENVIRON["REDACT_SOURCE"]
+        while ((pos = index(line, source)) > 0) {
+          line = substr(line, 1, pos - 1) "<redacted " kind " URL>" substr(line, pos + length(source))
+        }
+        print line
+      }
+      ' <"$$fifo" >&2 &
+      redactor_pid=$$!
+
+      # How long ffmpeg probes the input. RTSP's SDP answers most of it up front, so a long budget costs
+      # nothing there. A raw SRT transport stream has no SDP: ffmpeg would keep probing the live stream for
+      # the whole budget, delaying every cold start by that long, so SRT gets a short one.
+      case "$$SOURCE_URL" in
+        srt://*) analyze_us=2000000 ;;
+        *)       analyze_us=30000000 ;;
+      esac
+
+      FFPROBE="$${FFPROBE:-/usr/bin/ffprobe}"
+
+      # A source that accepts the connection and then goes quiet (SRT has no default
+      # connect/read timeout) would otherwise hang the probe, and any stop signal
+      # can't be forwarded until it returns.
+      run_ffprobe() {
+        if command -v timeout >/dev/null 2>&1; then
+          timeout 20 "$$FFPROBE" "$$@"
+        else
+          "$$FFPROBE" "$$@"
+        fi
+      }
+
+      # H.264/yuv420p sources: stream-copy (near-zero CPU). Assumes the source emits
+      # IDR frames at or below hlsSegmentDuration; MediaMTX cuts HLS segments on IDR
+      # boundaries regardless of that setting. All other formats and ffprobe failures
+      # fall through to libx264 re-encoding — the safe default.
+      # This probe is its own SRT session, separate from the pull below; encoders that
+      # accept a single caller may refuse the second connection.
+      if run_ffprobe \
+        -v quiet \
+        "$$@" \
+        -select_streams v:0 \
+        -show_entries stream=codec_name,pix_fmt \
+        -of csv=p=0 \
+        "$$SOURCE_URL" 2>/dev/null | grep -qxE "h264,(yuv420p|yuvj420p)"; then
+        if [ "$$stopped" -eq 0 ]; then
+          ffmpeg \
+            -hide_banner \
+            -nostdin \
+            -loglevel warning \
+            -fflags +genpts+discardcorrupt \
+            "$$@" \
+            -analyzeduration "$$analyze_us" \
+            -probesize 10000000 \
+            -i "$$SOURCE_URL" \
+            -an \
+            -map 0:v:0 \
+            -c:v copy \
+            -bsf:v dump_extra=freq=keyframe \
+            -f rtsp \
+            -rtsp_transport tcp \
+            "rtsp://127.0.0.1:$${RTSP_PORT:-8554}/$${MTX_PATH}" \
+            2>"$$fifo" &
+          ffmpeg_pid=$$!
+        fi
+      else
+        if [ "$$stopped" -eq 0 ]; then
+          # Re-encode for non-native browser codecs (MPEG-2, MJPEG, H.265, etc.) and
+          # as a fallback when ffprobe cannot reach the source. Revisit probe budget,
+          # CRF/bitrate, and quality tuning before treating this as production policy.
+          ffmpeg \
+            -hide_banner \
+            -nostdin \
+            -loglevel warning \
+            -fflags +genpts+discardcorrupt \
+            "$$@" \
+            -analyzeduration "$$analyze_us" \
+            -probesize 10000000 \
+            -i "$$SOURCE_URL" \
+            -an \
+            -map 0:v:0 \
+            -vf fps=30 \
+            -c:v libx264 \
+            -preset veryfast \
+            -tune zerolatency \
+            -pix_fmt yuv420p \
+            -b:v 1500k \
+            -maxrate 2000k \
+            -bufsize 4000k \
+            -g 60 \
+            -keyint_min 60 \
+            -force_key_frames "expr:gte(t,n_forced*2)" \
+            -sc_threshold 0 \
+            -x264-params repeat-headers=1 \
+            -f rtsp \
+            -rtsp_transport tcp \
+            "rtsp://127.0.0.1:$${RTSP_PORT:-8554}/$${MTX_PATH}" \
+            2>"$$fifo" &
+          ffmpeg_pid=$$!
+        fi
+      fi
+
+      if [ -z "$$ffmpeg_pid" ]; then
+        exit 0
+      fi
+
+      while :; do
+        set +e
+        wait "$$ffmpeg_pid"
+        status=$$?
+        set -e
+        if kill -0 "$$ffmpeg_pid" 2>/dev/null; then
+          continue
+        fi
+        break
+      done
+
+      wait "$$redactor_pid" 2>/dev/null || true
+      exit "$$status"
+
+  demo-user-init-script:
+    content: |
+      import json
+      import os
+      import time
+      import urllib.error
+      import urllib.parse
+      import urllib.request
+
+      KEYCLOAK = "http://keycloak:8070/auth"
+      CORE_SCIM = "http://opencop-core:8080/scim/v1/provisioning/Users"
+
+      class TransientRequestError(RuntimeError):
+          pass
+
+
+      class FatalRequestError(RuntimeError):
+          pass
+
+
+      def raise_for_status(status, url, payload):
+          detail = payload.decode(errors="replace")
+          message = f"HTTP {status} from {url}: {detail}"
+          if 500 <= status < 600:
+              raise TransientRequestError(message)
+          raise FatalRequestError(message)
+
+      def request(url, *, data=None, headers=None, method=None, accepted=(200,)):
+          req = urllib.request.Request(
+              url,
+              data=data,
+              headers=headers or {},
+              method=method,
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=15) as response:
+                  payload = response.read()
+                  if response.status not in accepted:
+                      raise_for_status(response.status, url, payload)
+                  return response.status, payload, response.headers
+          except urllib.error.HTTPError as error:
+              payload = error.read()
+              if error.code in accepted:
+                  return error.code, payload, error.headers
+              raise_for_status(error.code, url, payload)
+          except OSError as error:
+              raise TransientRequestError(f"transport failure contacting {url}: {error}") from error
+
+      def get_admin_token(*, request_fn=request):
+          token_body = urllib.parse.urlencode({
+              "grant_type": "password",
+              "client_id": "admin-cli",
+              "username": "admin",
+              "password": "admin",
+          }).encode()
+          _, raw_token, _ = request_fn(
+              f"{KEYCLOAK}/realms/master/protocol/openid-connect/token",
+              data=token_body,
+              headers={"Content-Type": "application/x-www-form-urlencoded"},
+              method="POST",
+          )
+          return json.loads(raw_token)["access_token"]
+
+      def ensure_keycloak_client(client_id, client_secret, *, request_fn=request):
+          admin_headers = {"Authorization": f"Bearer {get_admin_token(request_fn=request_fn)}"}
+          search_url = (
+              f"{KEYCLOAK}/admin/realms/master/clients?"
+              + urllib.parse.urlencode({"clientId": client_id})
+          )
+          _, raw_clients, _ = request_fn(search_url, headers=admin_headers)
+          clients = json.loads(raw_clients)
+          if len(clients) > 1:
+              raise RuntimeError(f"expected at most one Keycloak client, found {len(clients)}")
+
+          client = {
+              "clientId": client_id,
+              "name": "OpenCOP",
+              "enabled": True,
+              "clientAuthenticatorType": "client-secret",
+              "secret": client_secret,
+              "redirectUris": ["http://localhost/*"],
+              "webOrigins": ["http://localhost"],
+              "standardFlowEnabled": True,
+              "implicitFlowEnabled": False,
+              "directAccessGrantsEnabled": False,
+              "serviceAccountsEnabled": False,
+              "publicClient": False,
+              "frontchannelLogout": True,
+              "protocol": "openid-connect",
+              "attributes": {
+                  "backchannel.logout.session.required": "true",
+                  "pkce.code.challenge.method": "S256",
+                  "post.logout.redirect.uris": "http://localhost/*",
+              },
+              "fullScopeAllowed": True,
+          }
+          if clients:
+              request_fn(
+                  f"{KEYCLOAK}/admin/realms/master/clients/{clients[0]['id']}",
+                  data=json.dumps(client).encode(),
+                  headers={**admin_headers, "Content-Type": "application/json"},
+                  method="PUT",
+                  accepted=(204,),
+              )
+              print(f"[demo-user-init] updated Keycloak client: {client_id}")
+              return
+
+          request_fn(
+              f"{KEYCLOAK}/admin/realms/master/clients",
+              data=json.dumps(client).encode(),
+              headers={**admin_headers, "Content-Type": "application/json"},
+              method="POST",
+              accepted=(201,),
+          )
+          print(f"[demo-user-init] created Keycloak client: {client_id}")
+
+      def ensure_keycloak_user(username, password, email, *, request_fn=request):
+          admin_headers = {"Authorization": f"Bearer {get_admin_token(request_fn=request_fn)}"}
+          search_url = (
+              f"{KEYCLOAK}/admin/realms/master/users?"
+              + urllib.parse.urlencode({"username": username, "exact": "true"})
+          )
+          _, raw_users, _ = request_fn(search_url, headers=admin_headers)
+          users = json.loads(raw_users)
+          if len(users) > 1:
+              raise RuntimeError(f"expected at most one Keycloak demo user, found {len(users)}")
+          if users:
+              subject = users[0]["id"]
+              print(f"[demo-user-init] Keycloak user already exists: {username} ({subject})")
+              return subject
+
+          user = {
+              "username": username,
+              "email": email,
+              "enabled": True,
+              "emailVerified": True,
+              "firstName": "OpenCOP",
+              "lastName": "Demo",
+              "credentials": [{
+                  "type": "password",
+                  "value": password,
+                  "temporary": False,
+              }],
+          }
+          request_fn(
+              f"{KEYCLOAK}/admin/realms/master/users",
+              data=json.dumps(user).encode(),
+              headers={**admin_headers, "Content-Type": "application/json"},
+              method="POST",
+              accepted=(201,),
+          )
+          _, raw_users, _ = request_fn(search_url, headers=admin_headers)
+          users = json.loads(raw_users)
+          if len(users) != 1:
+              raise RuntimeError(f"expected one Keycloak demo user after create, found {len(users)}")
+          subject = users[0]["id"]
+          print(f"[demo-user-init] created Keycloak user: {username} ({subject})")
+          return subject
+
+      def core_user_count(subject, scim_headers, *, request_fn=request):
+          scim_search = CORE_SCIM + "?" + urllib.parse.urlencode({
+              "filter": f'externalId eq "{subject}"'
+          })
+          _, raw_result, _ = request_fn(scim_search, headers=scim_headers)
+          total_results = json.loads(raw_result).get("totalResults")
+          if type(total_results) is not int:
+              raise FatalRequestError("SCIM lookup omitted integer totalResults")
+          return total_results
+
+      def retry_core_user_count(
+          subject,
+          scim_headers,
+          *,
+          attempts=3,
+          delay_seconds=5,
+          request_fn=request,
+          sleep_fn=time.sleep,
+      ):
+          if attempts < 1:
+              raise ValueError("attempts must be positive")
+
+          last_transient = None
+          for attempt in range(1, attempts + 1):
+              try:
+                  return core_user_count(
+                      subject,
+                      scim_headers,
+                      request_fn=request_fn,
+                  )
+              except TransientRequestError as error:
+                  last_transient = error
+                  print(
+                      "[demo-user-init] transient SCIM lookup failure "
+                      f"({attempt}/{attempts}): {error}"
+                  )
+                  if attempt < attempts:
+                      sleep_fn(delay_seconds)
+
+          raise TransientRequestError(
+              f"SCIM lookup unavailable after {attempts} attempts"
+          ) from last_transient
+
+      def wait_for_core_user(
+          subject,
+          scim_headers,
+          *,
+          attempts=12,
+          delay_seconds=5,
+          request_fn=request,
+          sleep_fn=time.sleep,
+      ):
+          if attempts < 1:
+              raise ValueError("attempts must be positive")
+
+          last_transient = None
+          for attempt in range(1, attempts + 1):
+              try:
+                  total_results = core_user_count(
+                      subject,
+                      scim_headers,
+                      request_fn=request_fn,
+                  )
+                  last_transient = None
+                  if total_results == 1:
+                      return True
+                  if total_results != 0:
+                      raise FatalRequestError(
+                          f"expected at most one SCIM user, found {total_results}"
+                      )
+              except TransientRequestError as error:
+                  last_transient = error
+                  print(
+                      "[demo-user-init] transient SCIM lookup failure "
+                      f"({attempt}/{attempts}): {error}"
+                  )
+              if attempt < attempts:
+                  sleep_fn(delay_seconds)
+
+          if last_transient is not None:
+              raise TransientRequestError(
+                  f"SCIM lookup unavailable after {attempts} attempts"
+              ) from last_transient
+          return False
+
+      def ensure_scim_user(
+          subject,
+          username,
+          email,
+          scim_token,
+          *,
+          lookup_attempts=3,
+          verification_attempts=3,
+          delay_seconds=5,
+          request_fn=request,
+          sleep_fn=time.sleep,
+      ):
+          scim_headers = {
+              "Authorization": f"Bearer {scim_token}",
+              "Accept": "application/scim+json",
+          }
+          existing_users = retry_core_user_count(
+              subject,
+              scim_headers,
+              attempts=lookup_attempts,
+              delay_seconds=delay_seconds,
+              request_fn=request_fn,
+              sleep_fn=sleep_fn,
+          )
+          if existing_users == 1:
+              print("[demo-user-init] Core user already exists")
+              return
+          if existing_users != 0:
+              raise FatalRequestError(
+                  f"expected at most one SCIM user, found {existing_users}"
+              )
+
+          scim_user = {
+              "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+              "externalId": subject,
+              "userName": username,
+              "active": True,
+              "displayName": "OpenCOP Demo",
+              "name": {"givenName": "OpenCOP", "familyName": "Demo"},
+              "emails": [{"value": email, "primary": True}],
+          }
+          create_error = None
+          try:
+              request_fn(
+                  CORE_SCIM,
+                  data=json.dumps(scim_user).encode(),
+                  headers={**scim_headers, "Content-Type": "application/scim+json"},
+                  method="POST",
+                  accepted=(201, 409),
+              )
+          except TransientRequestError as error:
+              create_error = error
+              print("[demo-user-init] SCIM create result is ambiguous; verifying by externalId")
+
+          try:
+              verified = wait_for_core_user(
+                  subject,
+                  scim_headers,
+                  attempts=verification_attempts,
+                  delay_seconds=delay_seconds,
+                  request_fn=request_fn,
+                  sleep_fn=sleep_fn,
+              )
+          except TransientRequestError as error:
+              if create_error is not None:
+                  raise TransientRequestError(
+                      "ambiguous SCIM create could not be verified"
+                  ) from error
+              raise
+
+          if not verified:
+              if create_error is not None:
+                  raise TransientRequestError(
+                      "ambiguous SCIM create did not produce a verifiable user"
+                  ) from create_error
+              raise RuntimeError("direct SCIM provisioning did not create the demo user")
+          print("[demo-user-init] direct SCIM provisioning confirmed")
+
+      def initialize_demo(
+          client_id,
+          client_secret,
+          username,
+          password,
+          email,
+          scim_token,
+          *,
+          request_fn=request,
+          sleep_fn=time.sleep,
+      ):
+          ensure_keycloak_client(
+              client_id,
+              client_secret,
+              request_fn=request_fn,
+          )
+          subject = ensure_keycloak_user(
+              username,
+              password,
+              email,
+              request_fn=request_fn,
+          )
+          ensure_scim_user(
+              subject,
+              username,
+              email,
+              scim_token,
+              request_fn=request_fn,
+              sleep_fn=sleep_fn,
+          )
+          print(f"[demo-user-init] ready: {username} / configured password")
+
+      def main():
+          initialize_demo(
+              os.environ["IDP_CLIENT_ID"],
+              os.environ["IDP_CLIENT_SECRET"],
+              os.environ["OPENCOP_DEMO_USER"],
+              os.environ["OPENCOP_DEMO_PASSWORD"],
+              os.environ["OPENCOP_DEFAULT_ADMIN"],
+              os.environ["OPENCOP_SCIM_BEARER_TOKEN"],
+          )
+
+      if __name__ == "__main__":
+          main()

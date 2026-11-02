@@ -1,0 +1,31 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [20.25, 10.5]},
+      "properties": {
+        "osm_type": "R", "osm_id": 900001, "osm_key": "place", "osm_value": "city",
+        "name": "Riverside", "state": "Example State", "country": "Exampleland",
+        "extent": [20.0, 11.0, 21.0, 10.0]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [20.3, 10.6]},
+      "properties": {
+        "osm_type": "N", "osm_id": 900002, "osm_key": "amenity", "osm_value": "hospital",
+        "name": "Riverside General", "street": "Main Street", "housenumber": "5",
+        "city": "Riverside", "state": "Example State", "country": "Exampleland"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [20.4, 10.7]},
+      "properties": {
+        "osm_type": "W", "osm_id": 900003, "osm_key": "highway", "osm_value": "residential",
+        "name": "Main Street", "city": "Riverside", "country": "Exampleland"
+      }
+    }
+  ]
+}

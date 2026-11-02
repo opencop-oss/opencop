@@ -1,0 +1,51 @@
+diff --git a/node_modules/@deck.gl/layers/dist/text-layer/font-atlas-manager.js b/node_modules/@deck.gl/layers/dist/text-layer/font-atlas-manager.js
+index 47c2b7a..54d8e6d 100644
+--- a/node_modules/@deck.gl/layers/dist/text-layer/font-atlas-manager.js
++++ b/node_modules/@deck.gl/layers/dist/text-layer/font-atlas-manager.js
+@@ -148,6 +148,20 @@ export default class FontAtlasManager {
+         // update cache
+         cache.set(this._key, fontAtlas);
+     }
++    // OpenCOP patch (see patches/@deck.gl+layers+9.3.1.patch):
++    // The font atlas is a module-level LRU cache keyed by font config only and never
++    // evicts, so with `characterSet: "auto"` it grows without bound (CJK overflows
++    // MAX_TEXTURE_SIZE → labels white out). This gives the manager a real delete/reset
++    // lifecycle (the LRUCache already has `delete`): evict this manager's atlas from
++    // the shared cache and drop the local reference, so the next `setProps` rebuilds a
++    // fresh atlas from only the currently-live characterSet. Keyed by the real,
++    // untouched font config — no key perturbation.
++    deleteAtlas() {
++        if (this._key !== undefined) {
++            cache.delete(this._key);
++        }
++        this._atlas = undefined;
++    }
+     // eslint-disable-next-line max-statements
+     _generateFontAtlas(characterSet, cachedFontAtlas) {
+         const { fontFamily, fontWeight, fontSize, buffer, sdf, radius, cutoff } = this.props;
+diff --git a/node_modules/@deck.gl/layers/src/text-layer/font-atlas-manager.ts b/node_modules/@deck.gl/layers/src/text-layer/font-atlas-manager.ts
+index aadbb14..20f22b4 100644
+--- a/node_modules/@deck.gl/layers/src/text-layer/font-atlas-manager.ts
++++ b/node_modules/@deck.gl/layers/src/text-layer/font-atlas-manager.ts
+@@ -286,6 +286,21 @@ export default class FontAtlasManager {
+     cache.set(this._key, fontAtlas);
+   }
+ 
++  // OpenCOP patch (see patches/@deck.gl+layers+9.3.1.patch):
++  // The font atlas is a module-level LRU cache keyed by font config only and never
++  // evicts, so with `characterSet: "auto"` it grows without bound (CJK overflows
++  // MAX_TEXTURE_SIZE → labels white out). This gives the manager a real delete/reset
++  // lifecycle (the LRUCache already has `delete`): evict this manager's atlas from
++  // the shared cache and drop the local reference, so the next `setProps` rebuilds a
++  // fresh atlas from only the currently-live characterSet. Keyed by the real,
++  // untouched font config — no key perturbation.
++  deleteAtlas(): void {
++    if (this._key !== undefined) {
++      cache.delete(this._key);
++    }
++    this._atlas = undefined;
++  }
++
+   // eslint-disable-next-line max-statements
+   private _generateFontAtlas(characterSet: Set<string>, cachedFontAtlas?: FontAtlas): FontAtlas {
+     const {fontFamily, fontWeight, fontSize, buffer, sdf, radius, cutoff} = this.props;

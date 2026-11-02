@@ -1,0 +1,69 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      tracking-modes: cookie
+
+spring:
+  config:
+    import: "optional:configtree:/run/secrets/"
+  application:
+    name: opencop-websocket
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${opencop.db.url}
+    username: ${opencop.db.username}
+    password: ${opencop.db.password}
+    driver: ${opencop.db.driver}
+  session:
+    store-type: redis
+    servlet:
+      cookie:
+        name: OPENCOP_BFF
+        path: /
+        secure: true
+        http-only: true
+        same-site: Lax
+    redis:
+      namespace: opencop:bff
+  data:
+    redis:
+      host: ${redis.host}
+      port: ${redis.port}
+      password: ${redis.password:}
+      ssl:
+        enabled: ${redis.ssl:false}
+      timeout: 5s
+
+opencop:
+  dev.mode: false
+  watchbox:
+    subscription-reauth-interval: ${WATCHBOX_SUBSCRIPTION_REAUTH_INTERVAL:PT60S}
+  idp:
+    issuer: ${idp.issuer}
+
+websocket:
+  max-inbound-message-size: ${WEBSOCKET_MAX_INBOUND_MESSAGE_SIZE:64KB}
+  protocol-violation-limit: ${WEBSOCKET_PROTOCOL_VIOLATION_LIMIT:10}
+  protocol-violation-window: ${WEBSOCKET_PROTOCOL_VIOLATION_WINDOW:60s}
+
+logging:
+  level:
+    org:
+      springframework:
+        messaging: ${logging.level:INFO}
+        web.socket: ${logging.level:INFO}
+
+logging.level.org.springframework.data.redis: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

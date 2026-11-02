@@ -1,0 +1,40 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  port: 8087
+
+spring:
+  session:
+    servlet:
+      cookie:
+        domain: ""
+        same-site: Lax
+        secure: false
+
+opencop:
+  dev.mode: true
+  db:
+    url: jdbc:postgresql://localhost:5432/opencop-db
+    username: admin
+    password: mypassword
+    driver: org.postgresql.Driver
+
+logging.level.org.springframework.security: DEBUG
+logging.level.org.springframework.web.filter: DEBUG
+logging.level.org.springframework.web.socket: DEBUG
+logging.level.org.springframework.web.socket.sockjs: DEBUG
+logging.level.org.springframework.session: DEBUG
+
+logging.level.org.springframework.messaging: DEBUG
+logging.level.org.springframework.web.socket.messaging: DEBUG
+
+idp:
+  # Use Traefik (port 80) to match token issuer from Keycloak's KC_HOSTNAME
+  issuer: http://localhost/auth/realms/master
+
+redis:
+  host: localhost
+  port: 6379
+
+logging.level: INFO

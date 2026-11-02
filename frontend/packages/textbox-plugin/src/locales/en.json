@@ -1,0 +1,26 @@
+{
+    "toolbar": {
+        "textbox": "Textbox"
+    },
+    "style": {
+        "fillColor": "Fill Color",
+        "strokeColor": "Stroke Color",
+        "strokeWeight": "Stroke Weight",
+        "strokePattern": "Stroke Pattern"
+    },
+    "editor": {
+        "title": "TEXTBOX",
+        "contentLabel": "Text",
+        "contentPlaceholder": "Type the box contents…",
+        "colorLabel": "Text color",
+        "visibleLabel": "Show text",
+        "visibleDescription": "Hide the text without deleting it.",
+        "sizeLabelWithUnit": "Text size ({{unit}})",
+        "sizeInvalid": "Text size must be a number, optionally followed by {{unit}}.",
+        "sizePresets": "Size presets"
+    },
+    "editorPanel": {
+        "collapse": "Collapse panel",
+        "expand": "Expand panel"
+    }
+}

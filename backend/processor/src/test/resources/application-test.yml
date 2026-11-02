@@ -1,0 +1,44 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+spring:
+  main:
+    banner-mode: off
+
+redis:
+  host: localhost
+  port: 6379
+
+opencop.db.url: jdbc:postgresql://localhost:5432/opencop-db
+opencop.db.username: admin
+opencop.db.password: mypassword
+opencop.db.driver: org.postgresql.Driver
+
+logging.level: INFO
+
+logging:
+  level:
+    org:
+      springframework: WARN
+      springframework.kafka: WARN
+      testcontainers: WARN
+      flywaydb: WARN
+      hibernate: WARN
+      apache:
+        kafka: WARN
+    root: WARN
+    com:
+      zaxxer:
+        hikari: WARN
+      github:
+        dockerjava: WARN
+    io:
+      zonky:
+        test:
+          db:
+            postgres:
+              embedded: WARN
+
+kafka:
+  bootstrap:
+    url: localhost:9092

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <Style id="sample-icon-style">
+      <IconStyle>
+        <Icon>
+          <href>icons/sample-marker.png</href>
+        </Icon>
+      </IconStyle>
+    </Style>
+    <StyleMap id="sample-icon-map">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#sample-icon-style</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Placemark>
+      <name>SAMPLE POINT A</name>
+      <styleUrl>#sample-icon-map</styleUrl>
+      <Point>
+        <coordinates>-100.10, 40.10, 0</coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>SAMPLE POINT B</name>
+      <styleUrl>#sample-icon-map</styleUrl>
+      <Point>
+        <coordinates>-100.20, 40.20, 0</coordinates>
+      </Point>
+    </Placemark>
+  </Document>
+</kml>

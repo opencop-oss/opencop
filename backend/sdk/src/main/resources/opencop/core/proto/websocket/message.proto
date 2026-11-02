@@ -1,0 +1,31 @@
+// Copyright 2026 NexTech Solutions LLC
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package websocket;
+
+option java_outer_classname = "SocketProtos";
+option java_package = "opencop.core.proto.websocket";
+
+message SocketMessage {
+    enum Type {
+        UNKNOWN = 0;
+        CONNECT = 1;
+        SUBSCRIBE = 2;
+        SEND = 3;
+        UNSUBSCRIBE = 4;
+        HEARTBEAT = 5;
+        ERROR = 6;
+    }
+
+    message MultiPayload {
+        repeated bytes payload = 1;
+    }
+
+    Type type = 1;
+    string destination = 2;
+    map<string,string> headers = 3;
+    bytes payload = 4;
+    bool compressed = 5;
+}

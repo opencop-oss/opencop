@@ -1,0 +1,62 @@
+{
+    "compilerOptions": {
+        "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+        "target": "ES2022",
+        "useDefineForClassFields": true,
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "module": "ESNext",
+        "skipLibCheck": true,
+
+        /* Bundler mode */
+        "moduleResolution": "Bundler",
+        "allowImportingTsExtensions": true,
+        "verbatimModuleSyntax": true,
+        "moduleDetection": "force",
+        "noEmit": true,
+        "jsx": "react-jsx",
+
+        /* Linting */
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "erasableSyntaxOnly": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUncheckedSideEffectImports": true,
+
+        "paths": {
+            "~/*": ["./packages/app/src/*"],
+            "@opencop/proto": ["./packages/proto/src/index.ts"],
+            "@opencop/symbology": ["./packages/symbology/src/index.ts"],
+            "@opencop/vec": ["./packages/vec/src/index.ts"],
+            "@opencop/elements": ["./packages/elements/src/index.ts"],
+            "@opencop/api": ["./packages/api/src/index.ts"],
+            "@opencop/websocket": ["./packages/websocket/src/index.ts"],
+            "@opencop/ui": ["./packages/ui/src/index.ts"],
+            "@opencop/ingest": ["./packages/ingest/src/index.ts"],
+            "@opencop/layers": ["./packages/layers/src/index.ts"],
+            "@opencop/tools": ["./packages/tools/src/index.ts"],
+            "@opencop/contributions/plugin": ["./packages/contributions/src/plugin/index.ts"],
+            "@opencop/contributions/host": ["./packages/contributions/src/host/index.ts"],
+            "@opencop/contributions/validation": [
+                "./packages/contributions/src/validation/index.ts"
+            ],
+            "@opencop/contributions/containment": [
+                "./packages/contributions/src/containment/index.ts"
+            ],
+            "@opencop/contributions": ["./packages/contributions/src/index.ts"],
+            "@opencop/utils": ["./packages/utils/src/index.ts"],
+            "@opencop/plugin-sdk/testing": ["./packages/plugin-sdk/src/testing/index.ts"],
+            "@opencop/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
+            "@opencop/symbology-plugin": ["./packages/symbology-plugin/src/index.ts"],
+            "@opencop/scene": ["./packages/scene/src/index.ts"],
+            "@opencop/textbox-plugin": ["./packages/textbox-plugin/src/index.ts"]
+        }
+    },
+    "include": ["packages", "vite-env.d.ts"],
+    "exclude": [
+        "packages/**/*.test.ts",
+        "packages/**/*.test.tsx",
+        "packages/**/*.spec.ts",
+        "packages/**/*.spec.tsx"
+    ]
+}

@@ -1,0 +1,61 @@
+-- Indexes backing the admin Layers grid.
+--
+-- The layer-directory read is a UNION ALL of iam.layer and iam.layer_group, ordered by
+-- name/entry_type/id with LIMIT/OFFSET. Search and the name filter match substrings
+-- (LIKE '%term%'), which no btree can serve because of the leading wildcard.
+--
+-- NO TRIGRAM INDEXES, DELIBERATELY -- same conclusion V38 reached for the user directory.
+--
+-- The evidence here is a bounded synthetic experiment, not deployment telemetry: a standalone
+-- PostgreSQL 17 instance seeded with generated rows and hand-written SQL approximating the
+-- subselect, at two sizes. The smaller (250 layers / 50 groups) is the volume the project's own
+-- web e2e fixture calls realistic for this grid (GENERATED_LAYER_COUNT); the larger (5,001 / 501)
+-- is 20x headroom. Neither is measured against a real deployment, and the queries were written by
+-- hand rather than captured from Hibernate. Treat the numbers as indicative:
+--
+--   * At 250/50 the planner did not choose a gin_trgm_ops index on lower(name), taking a Seq Scan
+--     whether or not one existed: 0.21ms with, 0.23ms without, 0.19ms with enable_seqscan=off.
+--     Differences that small at this size are noise.
+--   * At 5,001/501 a broad term (matching ~20% of rows) still took a Seq Scan, 1.5ms.
+--   * At 5,001/501 a highly selective term did use the index -- 0.23ms vs 1.27ms. That ~1ms is
+--     real, but sits behind a 300ms search debounce and a network round trip, and needed 20x the
+--     rows the e2e fixture calls realistic.
+--   * count(*) over the union, which the page total needs, cannot use a trigram index regardless.
+--
+-- Dropping them also removes a deployment dependency: extensions are not available by default on
+-- managed Postgres. Azure Flexible Server requires allowlisting via the azure.extensions server
+-- parameter, which this project has already had to do for PGCRYPTO and POSTGIS. Substring matching
+-- is unaffected either way -- LIKE '%term%' returns identical rows with or without an index, so
+-- this was only ever an optimization. Revisit with EXPLAIN if the layer catalogue grows by orders
+-- of magnitude.
+
+-- Ordering support for `sort=createdAt`. Note this is NOT for the before/after/between filters --
+-- those are evaluated inline either way. It is the ORDER BY that pays: without these, sorting the
+-- union by created_at is a Seq Scan of both branches feeding a top-N heapsort, so cost grows with
+-- the whole table; with them the planner walks an Index Scan Backward per branch into a Merge
+-- Append and stops at LIMIT. Measured at 5,001/501: 1.31ms -> 0.06ms.
+--
+-- At today's 250/50 the planner does not use them yet (0.20ms vs 0.22ms, noise). They are kept
+-- anyway: unlike the trigram indexes they need no extension, they are cheap on a write volume of
+-- layer creates and renames, and the plan they enable is the one that stops scaling with row count.
+CREATE INDEX idx_layer_created_at       ON iam.layer       (created_at);
+CREATE INDEX idx_layer_group_created_at ON iam.layer_group (created_at);
+
+-- Deliberately NOT added:
+--
+--   * No ordering index on (name, id), but for different reasons per branch. iam.layer_group
+--     carries a full UNIQUE btree on name (uk_layer_group_name, V18). iam.layer does NOT: V1's
+--     layer_name_key was dropped in V17 for the partial uk_layer_name_active, narrowed again in
+--     V25 to lifecycle_state IN ('ACTIVE','MERGE_SOURCE_LOCKED','PENDING_MERGE'). That partial
+--     index can serve the default recordVisibility=ACTIVE read, whose predicate is a subset of
+--     it, but not ARCHIVED or ALL. A full (name, id) index would cover those two and is
+--     deliberately deferred, not ruled out -- add it with EXPLAIN evidence if the archived view
+--     measures slow.
+--   * No index for the `type` filter: it is a predicate on a constant literal inside each
+--     UNION ALL branch, so Postgres eliminates the other branch at plan time.
+--   * No index for `accessScope`: idx_layer_global_access_scope (V5) and
+--     idx_layer_group_global_access_scope (V20) already cover the selective GLOBAL direction.
+--     PRIVATE is the majority of rows, where a scan is correct.
+--   * No index for `lifecycleState`: idx_layer_lifecycle_state exists since V25, and layer groups
+--     synthesize a constant 'ACTIVE' so their branch needs none.
+--   * notContains / notEquals are full-branch scans by nature.

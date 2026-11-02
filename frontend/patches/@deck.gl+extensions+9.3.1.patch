@@ -1,0 +1,121 @@
+diff --git a/node_modules/@deck.gl/extensions/dist/collision-filter/collision-filter-effect.js b/node_modules/@deck.gl/extensions/dist/collision-filter/collision-filter-effect.js
+index 1754d1e..c4e6375 100644
+--- a/node_modules/@deck.gl/extensions/dist/collision-filter/collision-filter-effect.js
++++ b/node_modules/@deck.gl/extensions/dist/collision-filter/collision-filter-effect.js
+@@ -36,29 +36,33 @@ export default class CollisionFilterEffect {
+             return;
+         }
+         // Detect if mask has rendered. TODO: better dependency system for Effects
+-        const effects = allEffects?.filter(e => e.useInPicking && preRenderStats[e.id]);
++        const effects = allEffects?.filter(e => e.useInPicking);
+         const maskEffectRendered = preRenderStats['mask-effect']?.didRender;
+         // Collect layers to render
+         const channels = this._groupByCollisionGroup(device, collisionLayers);
+         const viewport = viewports[0];
+-        const viewportChanged = !this.lastViewport || !this.lastViewport.equals(viewport) || maskEffectRendered;
++        const viewportChanged =
++        !this.lastViewport || !this.lastViewport.equals(viewport) || maskEffectRendered;
+         // Resize framebuffers to match canvas
+         for (const collisionGroup in channels) {
+             const collisionFBO = this.collisionFBOs[collisionGroup];
+             const renderInfo = channels[collisionGroup];
++            const lastW = collisionFBO.width;
++            const lastH = collisionFBO.height;
+             // @ts-expect-error TODO - assuming WebGL context
+             const [width, height] = device.canvasContext.getPixelSize();
+             collisionFBO.resize({
+                 width: width / DOWNSCALE,
+                 height: height / DOWNSCALE
+             });
++            const fboChanged = lastW !== collisionFBO.width || lastH !== collisionFBO.height;
+             this._render(renderInfo, {
+                 effects,
+                 layerFilter,
+                 onViewportActive,
+                 views,
+                 viewport,
+-                viewportChanged
++                viewportChanged: viewportChanged || fboChanged,
+             });
+         }
+         // debugFBO(this.collisionFBOs[Object.keys(channels)[0]], {minimap: true});
+diff --git a/node_modules/@deck.gl/extensions/dist/index.d.ts b/node_modules/@deck.gl/extensions/dist/index.d.ts
+index 47318ec..a53b154 100644
+--- a/node_modules/@deck.gl/extensions/dist/index.d.ts
++++ b/node_modules/@deck.gl/extensions/dist/index.d.ts
+@@ -7,6 +7,9 @@ export { default as ClipExtension } from "./clip/clip-extension.js";
+ export { default as CollisionFilterExtension } from "./collision-filter/collision-filter-extension.js";
+ export { default as MaskExtension } from "./mask/mask-extension.js";
+ export { default as _TerrainExtension } from "./terrain/terrain-extension.js";
++export { TerrainEffect } from "./terrain/terrain-effect.js";
++export { TerrainCover } from "./terrain/terrain-cover.js";
++export { terrainModule } from "./terrain/shader-module.js";
+ export { default as project64 } from "./fp64/project64.js";
+ export type { BrushingExtensionProps } from "./brushing/brushing-extension.js";
+ export type { DataFilterExtensionProps, DataFilterExtensionOptions } from "./data-filter/data-filter-extension.js";
+diff --git a/node_modules/@deck.gl/extensions/dist/index.js b/node_modules/@deck.gl/extensions/dist/index.js
+index 6235979..95ddb57 100644
+--- a/node_modules/@deck.gl/extensions/dist/index.js
++++ b/node_modules/@deck.gl/extensions/dist/index.js
+@@ -10,6 +10,9 @@ export { default as ClipExtension } from "./clip/clip-extension.js";
+ export { default as CollisionFilterExtension } from "./collision-filter/collision-filter-extension.js";
+ export { default as MaskExtension } from "./mask/mask-extension.js";
+ export { default as _TerrainExtension } from "./terrain/terrain-extension.js";
++export { TerrainEffect } from "./terrain/terrain-effect.js";
++export { TerrainCover } from "./terrain/terrain-cover.js";
++export { terrainModule } from "./terrain/shader-module.js";
+ // Shader module
+ export { default as project64 } from "./fp64/project64.js";
+ //# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/node_modules/@deck.gl/extensions/src/collision-filter/collision-filter-effect.ts b/node_modules/@deck.gl/extensions/src/collision-filter/collision-filter-effect.ts
+index ef058ca..7f4a565 100644
+--- a/node_modules/@deck.gl/extensions/src/collision-filter/collision-filter-effect.ts
++++ b/node_modules/@deck.gl/extensions/src/collision-filter/collision-filter-effect.ts
+@@ -71,7 +71,7 @@ export default class CollisionFilterEffect implements Effect {
+     }
+ 
+     // Detect if mask has rendered. TODO: better dependency system for Effects
+-    const effects = allEffects?.filter(e => e.useInPicking && preRenderStats[e.id]);
++    const effects = allEffects?.filter(e => e.useInPicking);
+     const maskEffectRendered = (preRenderStats['mask-effect'] as MaskPreRenderStats)?.didRender;
+ 
+     // Collect layers to render
+@@ -85,19 +85,22 @@ export default class CollisionFilterEffect implements Effect {
+     for (const collisionGroup in channels) {
+       const collisionFBO = this.collisionFBOs[collisionGroup];
+       const renderInfo = channels[collisionGroup];
++      const lastW = collisionFBO.width;
++      const lastH = collisionFBO.height;
+       // @ts-expect-error TODO - assuming WebGL context
+       const [width, height] = device.canvasContext.getPixelSize();
+       collisionFBO.resize({
+         width: width / DOWNSCALE,
+         height: height / DOWNSCALE
+       });
++      const fboChanged = lastW !== collisionFBO.width || lastH !== collisionFBO.height;
+       this._render(renderInfo, {
+         effects,
+         layerFilter,
+         onViewportActive,
+         views,
+         viewport,
+-        viewportChanged
++        viewportChanged: viewportChanged || fboChanged,
+       });
+     }
+ 
+diff --git a/node_modules/@deck.gl/extensions/src/index.ts b/node_modules/@deck.gl/extensions/src/index.ts
+index 048446e..c0fb3b8 100644
+--- a/node_modules/@deck.gl/extensions/src/index.ts
++++ b/node_modules/@deck.gl/extensions/src/index.ts
+@@ -11,6 +11,9 @@ export {default as ClipExtension} from './clip/clip-extension';
+ export {default as CollisionFilterExtension} from './collision-filter/collision-filter-extension';
+ export {default as MaskExtension} from './mask/mask-extension';
+ export {default as _TerrainExtension} from './terrain/terrain-extension';
++export {TerrainEffect} from "./terrain/terrain-effect";
++export {TerrainCover} from "./terrain/terrain-cover";
++export {terrainModule} from "./terrain/shader-module";
+ 
+ // Shader module
+ export {default as project64} from './fp64/project64';

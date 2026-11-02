@@ -1,0 +1,5 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+com.opencop.core.sdk.technical.gateway.cache.redis.RedisConnectionAutoConfiguration
+com.opencop.core.sdk.technical.gateway.cache.redis.RedisGeoCacheAutoConfiguration

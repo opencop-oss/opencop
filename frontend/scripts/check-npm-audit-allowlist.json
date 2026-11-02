@@ -1,0 +1,18 @@
+[
+    {
+        "id": "GHSA-w3rx-r6r6-pgpr",
+        "package": "image-size",
+        "reason": "DoS (infinite loop) in image-size's ICNS parser. A fix exists (2.0.3) but cannot be applied: texture-compressor@1.0.2 pins image-size ^0.7.4 and calls image-size's default export with a file path, and in 2.x the default export accepts only a buffer, so an override would make that call throw. Only reachable via texture-compressor's CLI, which loaders.gl spawns with `npx` (child_process) exclusively in its Node-only texture *encoder*. opencop-web is a browser app, never imports the encoder, and cannot spawn child processes, so the vulnerable code is unreachable at runtime.",
+        "reference": "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr",
+        "addedAt": "2026-08-10",
+        "revisitBy": "2026-11-10"
+    },
+    {
+        "id": "GHSA-jrc7-96c5-q579",
+        "package": "maplibre-gl",
+        "reason": "XSS sanitizer bypass in maplibre-gl's DOM.sanitize(). The only fix is a major bump: the advisory covers <=6.4.0, we are on 5.8.0, and the 5.x line ends at 5.24.0 with no backport, so 6.x is the sole remedy and is disproportionate to schedule as an audit fix. Verified unreachable in this app: DOM.sanitize has exactly one call site in the shipped bundle, AttributionControl._updateAttributions, and every map construction passes attributionControl:false (MapView.tsx, render-vector-tile-preview.util.ts). Nothing adds an AttributionControl manually and nothing uses maplibre's Popup API. The app's own map credit (MapAttribution) renders attribution as React text and links after an inert DOMParser parse, not through the control. Shorter revisit window than the image-size entries because this is a critical with an available fix, not an unfixable DoS.",
+        "reference": "https://github.com/advisories/GHSA-jrc7-96c5-q579",
+        "addedAt": "2026-09-09",
+        "revisitBy": "2026-11-20"
+    }
+]

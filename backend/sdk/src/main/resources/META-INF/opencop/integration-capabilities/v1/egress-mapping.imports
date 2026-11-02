@@ -1,0 +1,4 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+# Provider-owned metadata temporarily packaged with the SDK; when the provider is extracted into its own artifact, this metadata moves and is generated with it.

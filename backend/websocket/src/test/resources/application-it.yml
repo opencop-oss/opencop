@@ -1,0 +1,29 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+spring:
+  main:
+    banner-mode: off
+
+logging:
+  level:
+    org:
+      springframework: WARN
+      springframework.kafka: WARN
+      testcontainers: WARN
+      flywaydb: WARN
+      hibernate: WARN
+      apache:
+        kafka: WARN
+    root: WARN
+    com:
+      zaxxer:
+        hikari: WARN
+      github:
+        dockerjava: WARN
+    io:
+      zonky:
+        test:
+          db:
+            postgres:
+              embedded: WARN

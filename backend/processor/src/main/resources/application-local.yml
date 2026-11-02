@@ -1,0 +1,47 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+server:
+  port: 8082
+
+redis:
+  host: localhost
+  port: 6379
+
+opencop.db.url: jdbc:postgresql://localhost:5432/opencop-db
+opencop.db.username: admin
+opencop.db.password: mypassword
+opencop.db.driver: org.postgresql.Driver
+
+opencop:
+  cloud:
+    provider: azure
+  # Copied from Core's application-local.yml, standard Azurite creds
+  blob:
+    container-name: "opencop-common"
+    account-name: devstoreaccount1
+    account-key: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+    endpoint: http://localhost:10000/devstoreaccount1
+    media:
+      container-name: opencop-common
+      sas-expiry-minutes: 10
+  messaging-broker:
+    provider: local
+    properties:
+      # bootstrap = AdminClient (topic/ACL ops), sasl-bootstrap = external BYOD producer endpoint.
+      # These are intentionally separate — same broker, different listeners/ports.
+      bootstrap-url: ${KAFKA_BOOTSTRAP_URL:localhost:9092}
+      sasl-bootstrap-url: ${BYOD_SASL_BOOTSTRAP:${BYOD_EXTERNAL_HOST:localhost}:9094}
+      default-producer-byte-rate: 1_048_576
+      topic-partitions: 10
+  byod:
+    sources-topic: opencop.byod.sources
+
+logging.level: INFO
+
+logging:
+  level:
+    org.springframework.kafka: INFO
+    org.springframework.kafka.listener: INFO
+    org.apache.kafka.clients.consumer: INFO
+    org.apache.kafka.clients.NetworkClient: INFO

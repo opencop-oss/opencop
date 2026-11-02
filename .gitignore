@@ -1,0 +1,3 @@
+# Local Compose overrides
+demo/.env
+demo/.env.local

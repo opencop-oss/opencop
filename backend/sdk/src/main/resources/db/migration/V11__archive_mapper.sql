@@ -1,0 +1,1 @@
+ALTER TABLE profiles.data_mapper ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE;

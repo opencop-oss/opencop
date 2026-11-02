@@ -1,0 +1,5 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+org.springframework.boot.EnvironmentPostProcessor=\
+com.opencop.core.sdk.technical.gateway.cache.redis.RedisTopologyEnvironmentPostProcessor

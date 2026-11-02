@@ -1,0 +1,114 @@
+# Copyright 2026 NexTech Solutions LLC
+# SPDX-License-Identifier: Apache-2.0
+
+FROM eclipse-temurin:25-jdk-alpine AS applicationinsights-agent
+
+ARG APPLICATIONINSIGHTS_AGENT_VERSION=3.7.8
+ARG APPLICATIONINSIGHTS_AGENT_SHA256=e8c494f3f9a36f6b99790a4741b03f51988dc5c4244c14cc24be51874ef72e6b
+
+RUN set -eu; \
+    name="applicationinsights-agent-${APPLICATIONINSIGHTS_AGENT_VERSION}.jar"; \
+    tmp="/tmp/${name}"; \
+    maven_url="https://repo1.maven.org/maven2/com/microsoft/azure/applicationinsights-agent/${APPLICATIONINSIGHTS_AGENT_VERSION}/${name}"; \
+    github_url="https://github.com/microsoft/ApplicationInsights-Java/releases/download/${APPLICATIONINSIGHTS_AGENT_VERSION}/${name}"; \
+    for attempt in 1 2 3; do \
+      for url in "${maven_url}" "${github_url}"; do \
+        rm -f "${tmp}"; \
+        if wget -T 30 -O "${tmp}" "${url}" \
+            && echo "${APPLICATIONINSIGHTS_AGENT_SHA256}  ${tmp}" | sha256sum -c -; then \
+          mv "${tmp}" /opt/applicationinsights-agent.jar; \
+          chmod 0444 /opt/applicationinsights-agent.jar; \
+          exit 0; \
+        fi; \
+      done; \
+      if [ "${attempt}" != "3" ]; then \
+        sleep 5; \
+      fi; \
+    done; \
+    echo "failed to download verified Application Insights agent ${APPLICATIONINSIGHTS_AGENT_VERSION}" >&2; \
+    exit 1
+
+FROM eclipse-temurin:25-jdk-alpine AS opencop-base
+
+RUN apk update && apk add --no-cache binutils
+
+# -----------------------------------------------------------------------------
+# 1) Build minimal JRE once with jlink
+#
+# Ordering constraint: jlink reads only $JAVA_HOME/jmods and the binutils above,
+# so it must stay ABOVE the Maven steps. Below them it was discarded and rebuilt
+# on every POM or sdk/src change, which is most base rebuilds.
+# -----------------------------------------------------------------------------
+RUN "$JAVA_HOME"/bin/jlink \
+    --verbose \
+    --module-path "$JAVA_HOME/jmods" \
+    --add-modules java.se,jdk.unsupported,jdk.management,jdk.net \
+    --strip-debug \
+    --no-man-pages \
+    --no-header-files \
+    --compress=2 \
+    --output /opt/jre/jre-25
+
+# Same ordering constraint: the agent stage is pinned by version + SHA-256, so
+# this layer is stable and belongs above anything that churns.
+COPY --from=applicationinsights-agent \
+    --chmod=0444 \
+    /opt/applicationinsights-agent.jar /opt/applicationinsights-agent.jar
+
+WORKDIR /build
+
+# Google's mirror of Maven Central: the second repository in scripts/maven-settings.xml. Service
+# images build FROM this image, so they inherit the settings and every flag below.
+ARG MAVEN_CENTRAL_FALLBACK_URL=https://maven-central.storage-download.googleapis.com/maven2
+
+# MAVEN_ARGS: every artifact comes from Central while Central answers; the fallback serves what
+# Central refuses. Maven still sends the fallback a few small requests on a healthy build (plugin
+# group metadata and some BOM imports, which it asks every repository for).
+#  - No retries against Central, so a refused request moves straight to the fallback instead of
+#    backing off against a Central that is rate-limiting the build. The fallback keeps its retries.
+#  - The fallback gets short timeouts, so a mirror that stops answering costs seconds, not the
+#    30-minute default, on a build that never needed it. requestTimeout is the time without data,
+#    not the time for a whole download.
+ENV MAVEN_CACHE_REPO=/root/.m2-cache/repository \
+    MAVEN_IMAGE_REPO=/root/.m2/repository \
+    MAVEN_CENTRAL_FALLBACK_URL=${MAVEN_CENTRAL_FALLBACK_URL} \
+    MAVEN_ARGS="--settings /build/scripts/maven-settings.xml -Daether.connector.http.retryHandler.count.central=0 -Daether.connector.requestTimeout.maven-central-fallback=30000 -Daether.connector.connectTimeout.maven-central-fallback=10000"
+
+COPY scripts/maven-settings.xml scripts/maven-settings.xml
+
+# 2) Maven wrapper (from repo root), with its Maven distribution installed once here so no later
+#    ./mvnw, in this image or a service image, downloads it.
+COPY .mvn .mvn
+COPY mvnw mvnw
+COPY scripts/install-maven-distribution.sh scripts/install-maven-distribution.sh
+RUN chmod +x mvnw \
+ && scripts/install-maven-distribution.sh
+
+# 3) Build/install opencop-parent (so children can resolve parent from local .m2)
+COPY opencop-parent/pom.xml opencop-parent/pom.xml
+
+RUN --mount=type=cache,id=opencop-maven-repository,target=/root/.m2-cache/repository,sharing=locked \
+    ./mvnw -Dmaven.repo.local="$MAVEN_CACHE_REPO" -f opencop-parent/pom.xml clean install -Dskip.unit.tests=true -Dskip.component.tests=true \
+ && rm -rf "$MAVEN_IMAGE_REPO/com/opencop" \
+ && mkdir -p "$MAVEN_IMAGE_REPO/com" \
+ && cp -a "$MAVEN_CACHE_REPO/com/opencop" "$MAVEN_IMAGE_REPO/com/"
+
+# 4) Build/install sdk
+COPY sdk/pom.xml sdk/pom.xml
+
+RUN --mount=type=cache,id=opencop-maven-repository,target=/root/.m2-cache/repository,sharing=locked \
+    rm -rf "$MAVEN_CACHE_REPO/com/opencop" \
+ && mkdir -p "$MAVEN_CACHE_REPO/com" \
+ && cp -a "$MAVEN_IMAGE_REPO/com/opencop" "$MAVEN_CACHE_REPO/com/" \
+ && ./mvnw -Dmaven.repo.local="$MAVEN_CACHE_REPO" -f sdk/pom.xml dependency:go-offline
+
+COPY sdk/src sdk/src
+
+RUN --mount=type=cache,id=opencop-maven-repository,target=/root/.m2-cache/repository,sharing=locked \
+    rm -rf "$MAVEN_CACHE_REPO/com/opencop" \
+ && mkdir -p "$MAVEN_CACHE_REPO/com" \
+ && cp -a "$MAVEN_IMAGE_REPO/com/opencop" "$MAVEN_CACHE_REPO/com/" \
+ && ./mvnw -Dmaven.repo.local="$MAVEN_CACHE_REPO" -f sdk/pom.xml clean install -Dskip.unit.tests=true -Dskip.component.tests=true \
+ && rm -rf "$MAVEN_IMAGE_REPO/com/opencop" \
+ && mkdir -p "$MAVEN_IMAGE_REPO/com" \
+ && cp -a "$MAVEN_CACHE_REPO/com/opencop" "$MAVEN_IMAGE_REPO/com/"

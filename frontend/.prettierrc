@@ -1,0 +1,19 @@
+{
+    "semi": true,
+    "singleQuote": false,
+    "tabWidth": 4,
+    "useTabs": false,
+    "trailingComma": "all",
+    "printWidth": 100,
+    "bracketSpacing": true,
+    "arrowParens": "always",
+    "endOfLine": "lf",
+    "overrides": [
+        {
+            "files": [".ort.yml", "ci/license-audit/**/*.yml", "ci/license-audit/**/*.yaml"],
+            "options": {
+                "tabWidth": 2
+            }
+        }
+    ]
+}
