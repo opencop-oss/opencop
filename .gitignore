@@ -1,3 +1,7 @@
 # Local Compose overrides
 demo/.env
 demo/.env.local
+
+# First-data walkthrough: local Python environment and downloaded secrets
+demo/.venv/
+demo/kafka-credentials*.json

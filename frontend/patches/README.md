@@ -17,6 +17,9 @@ sparingly**; prefer upgrading the dependency or an app-level workaround when pra
 2. Commit the generated `.patch` file.
 3. **Write a description** in `../docs/public/patches/` (template below). Every patch must have one — it is
    how the next maintainer knows what the patch does and whether it is still needed.
+4. **Update third-party notices** for deck.gl or luma.gl patches in
+   [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md). Keep patch entries and upstream
+   version links current when adding, updating or removing a patch.
 
 ## Naming the description file
 

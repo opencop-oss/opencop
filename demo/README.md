@@ -148,6 +148,11 @@ intentionally fixed at `http://localhost`; non-localhost hostnames require a
 different TLS and secure-cookie deployment contract and are not supported by
 this demo.
 
+## Put data on the map
+
+Follow [Put your first object on the map](FIRST_DATA.md) to create a Kafka
+source and send one moving point with the included Python example.
+
 ## Default map and credits
 
 A fresh demo opens on the OpenFreeMap `dark` basemap. A header banner marks

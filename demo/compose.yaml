@@ -796,7 +796,7 @@ configs:
         -- Neither banner is dismissible: the notice and the map credit must stay
         -- visible. An administrator can still edit or delete them.
         INSERT INTO public.banner (name, kind, enabled, starts_at, ends_at, color, text_color, format, dismissible, link_url, priority)
-        VALUES ('Demo notice', 'HEADER', true, now(), timestamptz '9999-12-31 23:59:59.999+00', '#7a4f00', '#ffffff', 'PLAIN', false, NULL, 0)
+        VALUES ('Demo notice', 'HEADER', true, now(), timestamptz '9999-12-31 23:59:59.999+00', '#f97316', '#111827', 'PLAIN', false, NULL, 0)
         RETURNING id INTO notice_id;
         INSERT INTO public.banner_translation (banner_id, locale, content)
         VALUES (notice_id, 'en', 'OpenCOP evaluation demo: fixed credentials and demo-only keys. Not for production or sensitive data.');

@@ -1,0 +1,11 @@
+OpenCOP
+Copyright 2026 NexTech Solutions LLC
+
+OpenCOP is licensed under the Apache License, Version 2.0. See LICENSE.
+
+Third-party material retains its own copyright notices and license terms.
+See frontend/THIRD_PARTY_NOTICES.md for the derived frontend source,
+dependency patches and catalog data identified there. Additional notices
+are retained in the corresponding source files and dependency packages.
+
+This NOTICE is informational and does not modify the applicable licenses.
